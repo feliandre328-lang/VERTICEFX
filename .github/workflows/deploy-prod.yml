@@ -1,0 +1,52 @@
+name: Deploy VERTICEFX
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+
+            APP_DIR=/home/ubuntu/VERTICEFX
+            FRONT_DIR=$APP_DIR/frontend
+            BACK_DIR=$APP_DIR/backend
+            WWW_DIR=/var/www/verticefx
+
+            echo "== Pull latest code =="
+            cd $APP_DIR
+            git pull origin main
+
+            echo "== Backend setup =="
+            cd $BACK_DIR
+            source venv/bin/activate
+            pip install -r requirements.txt
+            python manage.py migrate --noinput
+            python manage.py collectstatic --noinput
+
+            echo "== Frontend build =="
+            cd $FRONT_DIR
+            npm ci
+            npm run build
+
+            echo "== Publish frontend =="
+            sudo rm -rf $WWW_DIR/*
+            sudo cp -r dist/* $WWW_DIR/
+
+            echo "== Restart services =="
+            sudo systemctl restart verticefx
+            sudo systemctl reload nginx
+
+            echo "Deploy finished"
