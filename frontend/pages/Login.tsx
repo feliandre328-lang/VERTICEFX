@@ -1,19 +1,28 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { UserRole } from "../types";
 import { ShieldCheck, User, Mail, Lock, ChevronLeft } from "lucide-react";
-import { login as apiLogin } from "../services/api";
+import { useAuth } from "../layouts/AuthContext";
 
-interface LoginProps {
-  onLoginRequest: (role: UserRole) => void;
-  onGoToSignUp: () => void;
-}
+const Login: React.FC = () => {
+  const nav = useNavigate();
+  const { loginClient, startAdmin2FA } = useAuth();
 
-const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
   const [view, setView] = useState<"role" | "clientForm">("role");
-  const [usernameOrEmail, setUsernameOrEmail] = useState(""); // ⚠️ por padrão do Django JWT, use username
+  const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
+
+  const goToSignUp = () => nav("/signup");
+  const goToClientForm = () => setView("clientForm");
+  const goBackToRole = () => setView("role");
+
+  const goAdmin = () => {
+    // Admin usa 2FA (demo)
+    startAdmin2FA();
+    nav("/2fa", { replace: true });
+  };
 
   const handleClientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,17 +31,11 @@ const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
     try {
       setLoading(true);
 
-      // ✅ Login real no Django (SimpleJWT: TokenObtainPair)
-      // Por padrão ele espera "username" e "password".
-      // Aqui tratamos o campo como username (mesmo que o placeholder seja email).
-      const { access, refresh } = await apiLogin(usernameOrEmail, password);
+      // ✅ login real via AuthContext (que usa /api/auth/token/)
+      await loginClient(usernameOrEmail, password);
 
-      // ✅ Guarda tokens (simples e funcional)
-      localStorage.setItem("access", access);
-      localStorage.setItem("refresh", refresh);
-
-      // ✅ segue o fluxo normal do app
-      onLoginRequest("CLIENT");
+      // ✅ rota profissional (área logada)
+      nav("/app/dashboard", { replace: true });
     } catch (err: any) {
       setErrorMsg(err?.message ?? "Falha no login");
     } finally {
@@ -64,10 +67,13 @@ const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
   const renderRoleSelection = () => (
     <div className="w-full max-w-2xl">
       <LogoHeader />
+
       <div className="grid md:grid-cols-2 gap-6">
+        {/* CLIENT */}
         <button
-          onClick={() => setView("clientForm")}
+          onClick={goToClientForm}
           className="bg-slate-900 border border-slate-800 p-8 rounded-xl hover:border-blue-500/50 hover:bg-slate-800 transition-all group text-left"
+          disabled={loading}
         >
           <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-blue-500/20">
             <User className="text-blue-500" size={24} />
@@ -78,9 +84,11 @@ const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
           </p>
         </button>
 
+        {/* ADMIN */}
         <button
-          onClick={() => onLoginRequest("ADMIN")}
+          onClick={goAdmin}
           className="bg-slate-900 border border-slate-800 p-8 rounded-xl hover:border-emerald-500/50 hover:bg-slate-800 transition-all group text-left"
+          disabled={loading}
         >
           <div className="w-12 h-12 bg-emerald-500/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-emerald-500/20">
             <ShieldCheck className="text-emerald-500" size={24} />
@@ -91,14 +99,16 @@ const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
           </p>
         </button>
       </div>
+
       <div className="mt-8 text-center text-sm text-slate-500">
         <p>
           Não tem uma conta?{" "}
-          <button onClick={onGoToSignUp} className="font-semibold text-blue-500 hover:text-blue-400 transition-colors">
+          <button onClick={goToSignUp} className="font-semibold text-blue-500 hover:text-blue-400 transition-colors">
             Criar Conta
           </button>
         </p>
       </div>
+
       <div className="mt-8 text-center text-xs text-slate-600">
         <p>&copy; 2024 Vértice FX. Ambiente Seguro.</p>
       </div>
@@ -108,6 +118,7 @@ const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
   const renderClientForm = () => (
     <div className="w-full max-w-sm">
       <LogoHeader />
+
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-8">
         <h2 className="text-xl font-bold text-white text-center mb-1">Acesso do Cliente</h2>
         <p className="text-sm text-slate-500 text-center mb-6">Entre com suas credenciais.</p>
@@ -167,7 +178,7 @@ const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
         <div className="mt-6 text-center text-sm text-slate-500">
           <p>
             Não tem uma conta?{" "}
-            <button onClick={onGoToSignUp} className="font-semibold text-blue-500 hover:text-blue-400 transition-colors">
+            <button onClick={goToSignUp} className="font-semibold text-blue-500 hover:text-blue-400 transition-colors">
               Criar Conta
             </button>
           </p>
@@ -176,7 +187,7 @@ const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
 
       <div className="mt-6 text-center">
         <button
-          onClick={() => setView("role")}
+          onClick={goBackToRole}
           className="text-sm text-slate-500 hover:text-slate-300 transition-colors flex items-center justify-center gap-2 mx-auto"
           disabled={loading}
         >

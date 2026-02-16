@@ -1,62 +1,95 @@
-import React from 'react';
-import { LayoutDashboard, PieChart, TrendingUp, Wallet, ShieldCheck, FileText, Users, LogOut, Settings, BarChart3, AlertCircle, UserCheck } from 'lucide-react';
-import { UserRole } from '../types';
+import React from "react";
+import { NavLink, useNavigate } from "react-router-dom";
+import {
+  LayoutDashboard,
+  PieChart,
+  TrendingUp,
+  Wallet,
+  ShieldCheck,
+  FileText,
+  Users,
+  LogOut,
+  Settings,
+  BarChart3,
+  AlertCircle,
+  UserCheck,
+} from "lucide-react";
+import { UserRole } from "../types";
 
 interface SidebarProps {
-  activePage: string;
   role: UserRole;
-  onNavigate: (page: string) => void;
-  onLogout: () => void;
+  onLogout: () => void | Promise<void>;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activePage, role, onNavigate, onLogout }) => {
-  
-  const clientItems = [
-    { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard },
-    { id: 'investments', label: 'Meus Aportes', icon: PieChart },
-    { id: 'yields', label: 'Relatório de Performance', icon: TrendingUp },
-    { id: 'withdrawals', label: 'Resgates', icon: Wallet },
-    { id: 'transactions', label: 'Extrato Financeiro', icon: FileText },
-    { id: 'referrals', label: 'Programa de Benefícios', icon: Users },
-    { id: 'transparency', label: 'Transparência & Riscos', icon: ShieldCheck },
-  ];
+type MenuItem = {
+  label: string;
+  icon: React.ComponentType<{ size?: number }>;
+  to: string;
+};
 
-  const adminItems = [
-    { id: 'admin-dashboard', label: 'Mesa Operacional', icon: LayoutDashboard },
-    { id: 'admin-withdrawals', label: 'Aprovações Pendentes', icon: AlertCircle },
-    { id: 'admin-performance', label: 'Performance Diária', icon: BarChart3 },
-    { id: 'admin-compliance', label: 'Compliance (KYC)', icon: UserCheck },
-    { id: 'transactions', label: 'Log de Transações', icon: FileText },
-    { id: 'admin-settings', label: 'Configurações', icon: Settings },
-  ];
+const clientItems: MenuItem[] = [
+  { label: "Visão Geral", icon: LayoutDashboard, to: "/app/dashboard" },
+  { label: "Meus Aportes", icon: PieChart, to: "/app/investments" },
+  { label: "Relatório de Performance", icon: TrendingUp, to: "/app/yields" },
+  { label: "Resgates", icon: Wallet, to: "/app/withdrawals" },
+  { label: "Extrato Financeiro", icon: FileText, to: "/app/transactions" },
+  { label: "Programa de Benefícios", icon: Users, to: "/app/referrals" },
+  { label: "Transparência & Riscos", icon: ShieldCheck, to: "/app/transparency" },
+];
 
-  const menuItems = role === 'ADMIN' ? adminItems : clientItems;
+const adminItems: MenuItem[] = [
+  { label: "Mesa Operacional", icon: LayoutDashboard, to: "/app/admin/dashboard" },
+  { label: "Aprovações Pendentes", icon: AlertCircle, to: "/app/admin/withdrawals" },
+  { label: "Performance Diária", icon: BarChart3, to: "/app/admin/performance" },
+  { label: "Compliance (KYC)", icon: UserCheck, to: "/app/admin/compliance" },
+
+  // ✅ Recomendo unificar:
+  { label: "Log de Transações", icon: FileText, to: "/app/transactions" },
+
+  { label: "Configurações", icon: Settings, to: "/app/admin/settings" },
+];
+
+export default function Sidebar({ role, onLogout }: SidebarProps) {
+  const navigate = useNavigate();
+  const menuItems = role === "ADMIN" ? adminItems : clientItems;
+
+  const baseClass =
+    "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all duration-200";
+  const inactiveClass = "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50";
+  const activeClass = "bg-slate-800 text-white font-medium border-l-2 border-emerald-500";
+
+  const handleLogout = async () => {
+    try {
+      await onLogout();
+    } finally {
+      navigate("/login", { replace: true });
+    }
+  };
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-20 hidden md:flex">
       <div className="p-6 border-b border-slate-800">
         <div className="flex flex-col items-center justify-center text-center">
-          {/* Vértice FX Logo */}
           <div className="mb-3 relative w-12 h-12">
-             <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-                <defs>
-                  <linearGradient id="logoGradient" x1="0%" y1="100%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#2563eb" />
-                    <stop offset="100%" stopColor="#10b981" />
-                  </linearGradient>
-                </defs>
-                <path d="M50 10 L90 90 L10 90 Z" fill="url(#logoGradient)" opacity="0.2" />
-                <path d="M35 80 L35 65" stroke="url(#logoGradient)" strokeWidth="8" strokeLinecap="round" />
-                <path d="M50 80 L50 50" stroke="url(#logoGradient)" strokeWidth="8" strokeLinecap="round" />
-                <path d="M65 80 L65 35" stroke="url(#logoGradient)" strokeWidth="8" strokeLinecap="round" />
-             </svg>
+            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+              <defs>
+                <linearGradient id="logoGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#2563eb" />
+                  <stop offset="100%" stopColor="#10b981" />
+                </linearGradient>
+              </defs>
+              <path d="M50 10 L90 90 L10 90 Z" fill="url(#logoGradient)" opacity="0.2" />
+              <path d="M35 80 L35 65" stroke="url(#logoGradient)" strokeWidth="8" strokeLinecap="round" />
+              <path d="M50 80 L50 50" stroke="url(#logoGradient)" strokeWidth="8" strokeLinecap="round" />
+              <path d="M65 80 L65 35" stroke="url(#logoGradient)" strokeWidth="8" strokeLinecap="round" />
+            </svg>
           </div>
 
           <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-emerald-400 tracking-tight">
             VÉRTICE FX
           </h1>
           <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em] mt-1">
-            {role === 'ADMIN' ? 'Backoffice' : 'Gestão de Ativos'}
+            {role === "ADMIN" ? "Backoffice" : "Gestão de Ativos"}
           </p>
         </div>
       </div>
@@ -64,27 +97,23 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, role, onNavigate, onLogou
       <nav className="flex-1 overflow-y-auto py-6 space-y-1 px-3 scroll-smooth">
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = activePage === item.id;
           return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all duration-200 ${
-                isActive
-                  ? 'bg-slate-800 text-white font-medium border-l-2 border-emerald-500'
-                  : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50'
-              }`}
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => `${baseClass} ${isActive ? activeClass : inactiveClass}`}
+              end
             >
               <Icon size={18} />
               <span>{item.label}</span>
-            </button>
+            </NavLink>
           );
         })}
       </nav>
 
       <div className="p-4 border-t border-slate-800">
-        <button 
-          onClick={onLogout}
+        <button
+          onClick={handleLogout}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/5 transition-colors text-sm"
         >
           <LogOut size={18} />
@@ -93,6 +122,4 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, role, onNavigate, onLogou
       </div>
     </aside>
   );
-};
-
-export default Sidebar;
+}
