@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Dashboard from "./Dashboard";
@@ -6,26 +6,43 @@ import PixModal from "../components/PixModal";
 
 import * as FinanceService from "../services/financialService";
 import { SystemState } from "../types";
-
-import { createInvestment, createPixCharge } from "../services/api";
+import { createInvestment, createPixCharge, getDashboardSummary } from "../services/api";
 
 export default function DashboardRoute() {
   const navigate = useNavigate();
 
+  // state original do app (mantém TUDO como antes)
   const [systemState, setSystemState] = useState<SystemState>(() => FinanceService.getSystemState());
 
-  // input valor
-  const [amountInput, setAmountInput] = useState<string>("300,00");
-
-  // modal
+  // pix modal
   const [isPixOpen, setIsPixOpen] = useState(false);
+  const [amount, setAmount] = useState<number>(500);
+  const [saving, setSaving] = useState(false);
   const [pixCode, setPixCode] = useState("");
   const [externalRef, setExternalRef] = useState<string | undefined>(undefined);
 
-  const [loadingPix, setLoadingPix] = useState(false);
-  const [saving, setSaving] = useState(false);
-
   const access = useMemo(() => localStorage.getItem("access") || "", []);
+
+  // ✅ carrega o patrimônio real do banco e injeta em state.balanceCapital
+  useEffect(() => {
+    if (!access) return;
+
+    (async () => {
+      try {
+        const sum = await getDashboardSummary(access);
+        const balanceCapital = sum.balance_capital_cents / 100;
+
+        setSystemState((prev) => ({
+          ...prev,
+          balanceCapital,          // 🔥 aqui seu StatCard passa a mostrar do banco
+          totalContributed: balanceCapital, // opcional: se quiser alinhar o card Total Aportado
+        }));
+      } catch (e) {
+        // não trava o app
+        console.warn("Resumo do dashboard falhou:", e);
+      }
+    })();
+  }, [access]);
 
   const handleReinvest = () => {
     const result = FinanceService.reinvestResults();
@@ -37,12 +54,7 @@ export default function DashboardRoute() {
     }
   };
 
-  function parseAmountBR(v: string) {
-    const cleaned = v.replace(/\./g, "").replace(",", ".").replace(/[^\d.]/g, "");
-    const num = Number(cleaned);
-    return Number.isFinite(num) ? num : 0;
-  }
-
+  // ✅ abre modal e gera PIX no backend (pix_code + external_ref)
   const handleOpenPix = async () => {
     if (!access) {
       alert("Sessão expirada. Faça login novamente.");
@@ -50,38 +62,24 @@ export default function DashboardRoute() {
       return;
     }
 
-    const amount = parseAmountBR(amountInput);
-    if (!amount || amount < 300) {
-      alert("Valor mínimo para aporte é R$ 300,00.");
-      return;
-    }
-
     try {
-      setLoadingPix(true);
-
-      // ✅ gera BR Code válido no backend (com CRC real)
-      const { pix_code, external_ref } = await createPixCharge(access, amount);
-
-      setPixCode(pix_code);
-      setExternalRef(external_ref);
+      setSaving(true);
+      const charge = await createPixCharge(access, { amount });
+      setPixCode(charge.pix_code);
+      setExternalRef(charge.external_ref);
       setIsPixOpen(true);
     } catch (err: any) {
       alert(err?.message ?? "Erro ao gerar Pix.");
     } finally {
-      setLoadingPix(false);
+      setSaving(false);
     }
   };
 
-  const handleConfirmPaid = async () => {
+  // ✅ “Já paguei” -> cria investimento PENDING no Django
+  const handleConfirmPaid = async (refFromInput?: string) => {
     if (!access) {
       alert("Sessão expirada. Faça login novamente.");
       navigate("/login", { replace: true });
-      return;
-    }
-
-    const amount = parseAmountBR(amountInput);
-    if (!amount || amount < 300) {
-      alert("Valor mínimo para aporte é R$ 300,00.");
       return;
     }
 
@@ -91,10 +89,22 @@ export default function DashboardRoute() {
       await createInvestment(access, {
         amount,
         paid_at: new Date().toISOString(),
-        external_ref: externalRef,
+        external_ref: refFromInput || externalRef,
       });
 
       setIsPixOpen(false);
+
+      // opcional: atualiza summary de novo (pra refletir pendente/contadores)
+      try {
+        const sum = await getDashboardSummary(access);
+        const balanceCapital = sum.balance_capital_cents / 100;
+        setSystemState((prev) => ({
+          ...prev,
+          balanceCapital,
+          totalContributed: balanceCapital,
+        }));
+      } catch {}
+
       navigate("/app/investments", { replace: true });
     } catch (err: any) {
       alert(err?.message ?? "Erro ao registrar aporte.");
@@ -110,24 +120,20 @@ export default function DashboardRoute() {
         onNavigate={(p) => navigate(`/app/${p}`)}
         onReinvest={handleReinvest}
         onOpenPix={handleOpenPix}
-        amountInput={amountInput}
-        setAmountInput={setAmountInput}
-        loadingPix={loadingPix}
       />
 
       <PixModal
         isOpen={isPixOpen}
         onClose={() => setIsPixOpen(false)}
         onConfirm={handleConfirmPaid}
-        amount={parseAmountBR(amountInput)}
+        amount={amount}
         pixCode={pixCode}
-        externalRef={externalRef}
       />
 
       {saving && (
-        <div className="fixed inset-0 z-[99999] bg-black/40 flex items-center justify-center">
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center">
           <div className="rounded-lg border border-slate-800 bg-slate-950 px-5 py-3 text-sm text-slate-200">
-            Registrando aporte...
+            Processando...
           </div>
         </div>
       )}

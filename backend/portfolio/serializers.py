@@ -3,50 +3,41 @@ from .models import Investment
 
 
 class InvestmentSerializer(serializers.ModelSerializer):
-    # entrada: reais (ex: 500.00)
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2, write_only=True, required=True)
-
-    # saída: reais calculado
-    amount_brl = serializers.SerializerMethodField(read_only=True)
+    # envia amount em reais (float) e também amount_cents
+    amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Investment
         fields = [
             "id",
-            "amount",         # write_only
-            "amount_cents",   # read_only (útil debug)
-            "amount_brl",     # read_only
+            "amount_cents",
+            "amount",
             "status",
             "paid_at",
             "external_ref",
             "created_at",
         ]
-        read_only_fields = ["id", "amount_cents", "amount_brl", "status", "created_at"]
+        read_only_fields = ["id", "status", "created_at"]
 
-    def get_amount_brl(self, obj: Investment):
-        return f"{obj.amount_cents / 100:.2f}"
-
-    def validate_amount(self, value):
-        if value < 300:
-            raise serializers.ValidationError("O valor mínimo do aporte é R$ 300,00.")
-        return value
-
-    def create(self, validated_data):
-        # remove "amount" (reais) e grava em cents
-        amount = validated_data.pop("amount")
-        amount_cents = int(round(float(amount) * 100))
-        return Investment.objects.create(amount_cents=amount_cents, **validated_data)
+    def get_amount(self, obj: Investment):
+        return obj.amount_cents / 100
 
 
-class PixChargeCreateSerializer(serializers.Serializer):
+class InvestmentCreateSerializer(serializers.Serializer):
+    # recebe em reais (ex: 500.00) e converte pra cents
     amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    paid_at = serializers.DateTimeField(required=False, allow_null=True)
+    external_ref = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def validate_amount(self, value):
         if value < 300:
-            raise serializers.ValidationError("O valor mínimo do Pix é R$ 300,00.")
+            raise serializers.ValidationError("Valor mínimo do aporte é R$ 300,00.")
         return value
 
 
-class PixChargeResponseSerializer(serializers.Serializer):
-    pix_code = serializers.CharField()
-    external_ref = serializers.CharField()
+class DashboardSummarySerializer(serializers.Serializer):
+    # tudo em cents para evitar float
+    balance_capital_cents = serializers.IntegerField()
+    pending_cents = serializers.IntegerField()
+    approved_count = serializers.IntegerField()
+    pending_count = serializers.IntegerField()

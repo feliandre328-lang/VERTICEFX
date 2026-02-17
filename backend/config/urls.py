@@ -3,7 +3,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from portfolio.views import InvestmentViewSet, PixChargeView
+from portfolio.views import InvestmentViewSet, PixChargeView, DashboardSummaryView
 
 router = DefaultRouter()
 router.register("investments", InvestmentViewSet, basename="investment")
@@ -13,6 +13,9 @@ urlpatterns = [
 
     # JWT
     path("api/auth/token/", TokenObtainPairView.as_view()),
+
+    # Dashboard summary
+    path("api/dashboard/summary/", DashboardSummaryView.as_view()),
 
     # PIX
     path("api/pix/charge/", PixChargeView.as_view()),
