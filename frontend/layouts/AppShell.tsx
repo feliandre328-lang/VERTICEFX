@@ -219,15 +219,7 @@ export default function AppShell() {
                 path="admin/withdrawals"
                 element={
                   <RequireAdmin>
-                    <AdminDashboard
-                      state={systemState}
-                      onApprove={handleAdminApprove}
-                      onReject={handleAdminReject}
-                      onSetPerformance={handleSetPerformance}
-                      onToggleVerification={handleToggleVerification}
-                      view="admin-withdrawals"
-                      onNavigate={(p) => nav(`/app/${p}`)}
-                    />
+                    <AdminPendingInvestments/>
                   </RequireAdmin>
                 }
               />

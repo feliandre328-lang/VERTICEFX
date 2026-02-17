@@ -1,43 +1,78 @@
 from rest_framework import serializers
+from django.contrib.auth import get_user_model
 from .models import Investment
+
+User = get_user_model()
 
 
 class InvestmentSerializer(serializers.ModelSerializer):
-    # envia amount em reais (float) e também amount_cents
-    amount = serializers.SerializerMethodField()
+    # entrada em reais
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, write_only=True, required=True)
 
     class Meta:
         model = Investment
         fields = [
             "id",
-            "amount_cents",
-            "amount",
+            "amount",          # write-only
+            "amount_cents",    # read
             "status",
             "paid_at",
             "external_ref",
             "created_at",
         ]
-        read_only_fields = ["id", "status", "created_at"]
-
-    def get_amount(self, obj: Investment):
-        return obj.amount_cents / 100
-
-
-class InvestmentCreateSerializer(serializers.Serializer):
-    # recebe em reais (ex: 500.00) e converte pra cents
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
-    paid_at = serializers.DateTimeField(required=False, allow_null=True)
-    external_ref = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+        read_only_fields = ["id", "amount_cents", "status", "created_at"]
 
     def validate_amount(self, value):
+        # mínimo fintech (você pediu): R$ 300,00
         if value < 300:
             raise serializers.ValidationError("Valor mínimo do aporte é R$ 300,00.")
         return value
 
+    def create(self, validated_data):
+        amount = validated_data.pop("amount")
+        # converte reais -> centavos
+        amount_cents = int(round(float(amount) * 100))
 
-class DashboardSummarySerializer(serializers.Serializer):
-    # tudo em cents para evitar float
-    balance_capital_cents = serializers.IntegerField()
-    pending_cents = serializers.IntegerField()
-    approved_count = serializers.IntegerField()
-    pending_count = serializers.IntegerField()
+        user = self.context["request"].user
+        inv = Investment.objects.create(
+            user=user,
+            amount_cents=amount_cents,
+            paid_at=validated_data.get("paid_at"),
+            external_ref=validated_data.get("external_ref"),
+        )
+        return inv
+
+
+class AdminInvestmentSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+
+    class Meta:
+        model = Investment
+        fields = [
+            "id",
+            "user_id",
+            "username",
+            "email",
+            "amount_cents",
+            "status",
+            "paid_at",
+            "external_ref",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class PixChargeCreateSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+    def validate_amount(self, value):
+        if value < 300:
+            raise serializers.ValidationError("Valor mínimo do Pix é R$ 300,00.")
+        return value
+
+
+class PixChargeResponseSerializer(serializers.Serializer):
+    pix_code = serializers.CharField()
+    external_ref = serializers.CharField()

@@ -1,46 +1,33 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserRole } from "../types";
 import { ShieldCheck, User, Mail, Lock, ChevronLeft } from "lucide-react";
 import { useAuth } from "../layouts/AuthContext";
 
+type View = "role" | "client" | "admin";
+
 const Login: React.FC = () => {
   const nav = useNavigate();
-  const { loginClient, startAdmin2FA } = useAuth();
+  const { loginClient, loginAdmin } = useAuth();
 
-  const [view, setView] = useState<"role" | "clientForm">("role");
+  const [view, setView] = useState<View>("role");
   const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const title = useMemo(() => {
+    if (view === "client") return "Acesso do Cliente";
+    if (view === "admin") return "Acesso ao Backoffice";
+    return "Selecione seu acesso";
+  }, [view]);
 
   const goToSignUp = () => nav("/signup");
-  const goToClientForm = () => setView("clientForm");
-  const goBackToRole = () => setView("role");
-
-  const goAdmin = () => {
-    // Admin usa 2FA (demo)
-    startAdmin2FA();
-    nav("/2fa", { replace: true });
-  };
-
-  const handleClientSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const goBack = () => {
     setErrorMsg("");
-
-    try {
-      setLoading(true);
-
-      // ✅ login real via AuthContext (que usa /api/auth/token/)
-      await loginClient(usernameOrEmail, password);
-
-      // ✅ rota profissional (área logada)
-      nav("/app/dashboard", { replace: true });
-    } catch (err: any) {
-      setErrorMsg(err?.message ?? "Falha no login");
-    } finally {
-      setLoading(false);
-    }
+    setPassword("");
+    setUsernameOrEmail("");
+    setView("role");
   };
 
   const LogoHeader = () => (
@@ -64,6 +51,44 @@ const Login: React.FC = () => {
     </div>
   );
 
+  const ErrorBox = () =>
+    errorMsg ? (
+      <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        {errorMsg}
+      </div>
+    ) : null;
+
+  const handleClientSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    try {
+      setLoading(true);
+      await loginClient(usernameOrEmail, password);
+      nav("/app/dashboard", { replace: true });
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? "Falha no login do cliente");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    try {
+      setLoading(true);
+      await loginAdmin(usernameOrEmail, password);
+      // ✅ rota do backoffice (ajuste conforme suas rotas)
+      nav("/app/admin/dashboard", { replace: true });
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? "Falha no login do backoffice");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderRoleSelection = () => (
     <div className="w-full max-w-2xl">
       <LogoHeader />
@@ -71,9 +96,13 @@ const Login: React.FC = () => {
       <div className="grid md:grid-cols-2 gap-6">
         {/* CLIENT */}
         <button
-          onClick={goToClientForm}
+          onClick={() => {
+            setErrorMsg("");
+            setView("client");
+          }}
           className="bg-slate-900 border border-slate-800 p-8 rounded-xl hover:border-blue-500/50 hover:bg-slate-800 transition-all group text-left"
           disabled={loading}
+          type="button"
         >
           <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-blue-500/20">
             <User className="text-blue-500" size={24} />
@@ -86,16 +115,20 @@ const Login: React.FC = () => {
 
         {/* ADMIN */}
         <button
-          onClick={goAdmin}
+          onClick={() => {
+            setErrorMsg("");
+            setView("admin");
+          }}
           className="bg-slate-900 border border-slate-800 p-8 rounded-xl hover:border-emerald-500/50 hover:bg-slate-800 transition-all group text-left"
           disabled={loading}
+          type="button"
         >
           <div className="w-12 h-12 bg-emerald-500/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-emerald-500/20">
             <ShieldCheck className="text-emerald-500" size={24} />
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Backoffice / Admin</h2>
           <p className="text-sm text-slate-400">
-            Acesso restrito para gestão de caixa, aprovação de saques e definição de performance.
+            Acesso restrito para gestão de caixa, aprovação de aportes e controles operacionais.
           </p>
         </button>
       </div>
@@ -110,97 +143,106 @@ const Login: React.FC = () => {
       </div>
 
       <div className="mt-8 text-center text-xs text-slate-600">
-        <p>&copy; 2024 Vértice FX. Ambiente Seguro.</p>
+        <p>&copy; 2026 Vértice FX. Ambiente Seguro.</p>
       </div>
     </div>
   );
 
-  const renderClientForm = () => (
-    <div className="w-full max-w-sm">
-      <LogoHeader />
+  const renderForm = (kind: "client" | "admin") => {
+    const isAdmin = kind === "admin";
 
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-8">
-        <h2 className="text-xl font-bold text-white text-center mb-1">Acesso do Cliente</h2>
-        <p className="text-sm text-slate-500 text-center mb-6">Entre com suas credenciais.</p>
+    return (
+      <div className="w-full max-w-sm">
+        <LogoHeader />
 
-        {errorMsg ? (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {errorMsg}
-          </div>
-        ) : null}
-
-        <form onSubmit={handleClientSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-              Usuário (ou Email)
-            </label>
-            <div className="relative">
-              <Mail size={16} className="absolute left-3 top-3.5 text-slate-500" />
-              <input
-                type="text"
-                value={usernameOrEmail}
-                onChange={(e) => setUsernameOrEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 transition-all placeholder:text-slate-600"
-                placeholder="admin (ou seu email, se for seu username)"
-                autoComplete="username"
-                required
-                disabled={loading}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Senha</label>
-            <div className="relative">
-              <Lock size={16} className="absolute left-3 top-3.5 text-slate-500" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 transition-all placeholder:text-slate-600"
-                placeholder="••••••••"
-                autoComplete="current-password"
-                required
-                disabled={loading}
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all"
-            disabled={loading}
-          >
-            {loading ? "Entrando..." : "Continuar"}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-slate-500">
-          <p>
-            Não tem uma conta?{" "}
-            <button onClick={goToSignUp} className="font-semibold text-blue-500 hover:text-blue-400 transition-colors">
-              Criar Conta
-            </button>
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8">
+          <h2 className="text-xl font-bold text-white text-center mb-1">{title}</h2>
+          <p className="text-sm text-slate-500 text-center mb-6">
+            Entre com suas credenciais {isAdmin ? "do Backoffice" : "de cliente"}.
           </p>
+
+          <ErrorBox />
+
+          <form onSubmit={isAdmin ? handleAdminSubmit : handleClientSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Usuário (ou Email)
+              </label>
+              <div className="relative">
+                <Mail size={16} className="absolute left-3 top-3.5 text-slate-500" />
+                <input
+                  type="text"
+                  value={usernameOrEmail}
+                  onChange={(e) => setUsernameOrEmail(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 transition-all placeholder:text-slate-600"
+                  placeholder={isAdmin ? "admin" : "seu usuário"}
+                  autoComplete="username"
+                  required
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Senha</label>
+              <div className="relative">
+                <Lock size={16} className="absolute left-3 top-3.5 text-slate-500" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 transition-all placeholder:text-slate-600"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  required
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className={`w-full py-3 ${
+                isAdmin ? "bg-emerald-600 hover:bg-emerald-500" : "bg-blue-600 hover:bg-blue-500"
+              } disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all`}
+              disabled={loading}
+            >
+              {loading ? "Entrando..." : "Continuar"}
+            </button>
+          </form>
+
+          {!isAdmin && (
+            <div className="mt-6 text-center text-sm text-slate-500">
+              <p>
+                Não tem uma conta?{" "}
+                <button onClick={goToSignUp} className="font-semibold text-blue-500 hover:text-blue-400 transition-colors">
+                  Criar Conta
+                </button>
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={goBack}
+            className="text-sm text-slate-500 hover:text-slate-300 transition-colors flex items-center justify-center gap-2 mx-auto"
+            disabled={loading}
+            type="button"
+          >
+            <ChevronLeft size={16} />
+            Voltar
+          </button>
         </div>
       </div>
-
-      <div className="mt-6 text-center">
-        <button
-          onClick={goBackToRole}
-          className="text-sm text-slate-500 hover:text-slate-300 transition-colors flex items-center justify-center gap-2 mx-auto"
-          disabled={loading}
-        >
-          <ChevronLeft size={16} />
-          Voltar
-        </button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-      {view === "role" ? renderRoleSelection() : renderClientForm()}
+      {view === "role" && renderRoleSelection()}
+      {view === "client" && renderForm("client")}
+      {view === "admin" && renderForm("admin")}
     </div>
   );
 };
