@@ -1,5 +1,6 @@
-import os
 import uuid
+from decimal import Decimal, ROUND_HALF_UP
+
 from django.db.models import Sum, Count
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -14,6 +15,8 @@ from .serializers import (
     PixChargeCreateSerializer,
     PixChargeResponseSerializer,
 )
+
+from .mp_service import mp_create_pix_payment
 
 
 class InvestmentViewSet(viewsets.ModelViewSet):
@@ -100,51 +103,125 @@ class DashboardSummaryView(APIView):
         )
 
 
+def _to_amount_2dp(amount) -> Decimal:
+    if isinstance(amount, Decimal):
+        dec = amount
+    else:
+        dec = Decimal(str(amount))
+    return dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 class PixChargeView(APIView):
     """
     POST /api/pix/charge/
-    Body: { "amount": 500.00 }
+    Body: { "amount": 300.00 }
 
-    Retorna:
-    { "pix_code": "...", "external_ref": "pix-..." }
-
-    Mock dinâmico (padrão fintech)
+    Retorna (padrão pro frontend):
+    {
+      "pix_code": "...copia e cola...",
+      "external_ref": "pix-....",
+      "qr_code_base64": "...."   (PNG base64)
+    }
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         in_ser = PixChargeCreateSerializer(data=request.data)
         in_ser.is_valid(raise_exception=True)
-        amount = in_ser.validated_data["amount"]
 
+        amount = _to_amount_2dp(in_ser.validated_data["amount"])
         external_ref = f"pix-{uuid.uuid4().hex[:12]}"
 
-        # ✅ BR Code "base" configurado via ENV (sem valor).
-        # Ex: PIX_BR_CODE="00020126....6304ABCD"
-        base = os.getenv("PIX_BR_CODE", "").strip()
-        if not base:
-            return Response({"detail": "PIX_BR_CODE não configurado no backend."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # ✅ REQUIRED: description
+        description = f"Aporte Vértice FX - usuário {request.user.get_username()} - ref {external_ref}"
 
-        # 🚨 Importante: BR Code com valor dinâmico REAL exige gerar payload corretamente.
-        # Aqui é "padrão fintech" para UI/teste, mas o pagamento real depende de payload válido do PSP.
-        # Ainda assim, você pediu "QR real + pagamento manual + confirmação manual":
-        # -> O que é "real" aqui é usar SEU BR CODE válido já emitido por você/PSP.
-        # Se seu BR CODE já contém valor fixo, ele sempre vai cobrar aquele valor.
-        pix_code = base
+        mp = mp_create_pix_payment(
+            amount=float(amount),
+            external_ref=external_ref,
+            description=description,
+            payer_email=(request.user.email or None),
+        )
 
-        out_ser = PixChargeResponseSerializer(data={"pix_code": pix_code, "external_ref": external_ref})
+        tx = (mp.get("point_of_interaction") or {}).get("transaction_data") or {}
+
+        # Mercado Pago geralmente retorna:
+        # tx["qr_code"] (copia e cola) e tx["qr_code_base64"] (imagem)
+        pix_code = tx.get("qr_code")  # copia e cola
+        qr_base64 = tx.get("qr_code_base64")  # PNG base64
+
+        if not pix_code:
+            return Response(
+                {"detail": "Mercado Pago não retornou qr_code (copia e cola).", "raw": mp},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        out = {
+            "pix_code": pix_code,
+            "external_ref": external_ref,
+            "qr_code_base64": qr_base64 or "",
+        }
+
+        out_ser = PixChargeResponseSerializer(data=out)
         out_ser.is_valid(raise_exception=True)
         return Response(out_ser.data, status=status.HTTP_200_OK)
-    
-    class MeView(APIView):
-        permission_classes = [IsAuthenticated]
 
-        def get(self, request):
-            u = request.user
-            return Response({
-                "id": u.id,
-                "username": u.get_username(),
-                "email": u.email or "",
-                "is_staff": bool(u.is_staff),
-                "is_superuser": bool(u.is_superuser),
-            })
+
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        u = request.user
+        return Response({
+            "id": u.id,
+            "username": u.get_username(),
+            "email": u.email or "",
+            "is_staff": bool(u.is_staff),
+            "is_superuser": bool(u.is_superuser),
+        })
+
+class AdminSummaryView(APIView):
+    """
+    GET /api/admin/summary/
+
+    Retorna:
+    - tvl_approved_cents: soma de TODOS os aportes APROVADOS (todos os usuários)
+    - pending_cents: soma de TODOS os aportes PENDENTES
+    - approved_count / pending_count
+    """
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        tvl_approved = (
+            Investment.objects.filter(status=Investment.STATUS_APPROVED)
+            .aggregate(s=Sum("amount_cents"))["s"]
+            or 0
+        )
+
+        pending_sum = (
+            Investment.objects.filter(status=Investment.STATUS_PENDING)
+            .aggregate(s=Sum("amount_cents"))["s"]
+            or 0
+        )
+
+        approved_count = (
+            Investment.objects.filter(status=Investment.STATUS_APPROVED)
+            .aggregate(c=Count("id"))["c"]
+            or 0
+        )
+
+        pending_count = (
+            Investment.objects.filter(status=Investment.STATUS_PENDING)
+            .aggregate(c=Count("id"))["c"]
+            or 0
+        )
+        
+
+        return Response(
+            {
+                "tvl_cents": tvl_approved,
+                "pending_cents": pending_sum,
+                "approved_count": approved_count,
+                "pending_count": pending_count,
+            },
+            status=status.HTTP_200_OK,
+        )

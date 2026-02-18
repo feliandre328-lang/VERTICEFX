@@ -8,6 +8,7 @@ from portfolio.views import (
     AdminInvestmentViewSet,
     PixChargeView,
     DashboardSummaryView,
+    AdminSummaryView,
 )
 
 from portfolio.auth_views import MeView
@@ -29,6 +30,8 @@ urlpatterns = [
 
     # Summary
     path("api/dashboard/summary/", DashboardSummaryView.as_view()),
+    path("api/admin/summary/", AdminSummaryView.as_view()),
+
 
     # API
     path("api/", include(router.urls)),

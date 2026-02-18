@@ -162,3 +162,5 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN")
+

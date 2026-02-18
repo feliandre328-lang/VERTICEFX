@@ -6,7 +6,9 @@ import PixModal from "../components/PixModal";
 
 import * as FinanceService from "../services/financialService";
 import { SystemState } from "../types";
-import { createInvestment, createPixCharge, getDashboardSummary } from "../services/api";
+import { createInvestment, createPixCharge, getDashboardSummary, PixChargeResponse } from "../services/api";
+
+const MIN_PIX_AMOUNT = 300;
 
 export default function DashboardRoute() {
   const navigate = useNavigate();
@@ -14,14 +16,21 @@ export default function DashboardRoute() {
   // state original do app (mantém TUDO como antes)
   const [systemState, setSystemState] = useState<SystemState>(() => FinanceService.getSystemState());
 
-  // pix modal
-  const [isPixOpen, setIsPixOpen] = useState(false);
-  const [amount, setAmount] = useState<number>(500);
-  const [saving, setSaving] = useState(false);
-  const [pixCode, setPixCode] = useState("");
-  const [externalRef, setExternalRef] = useState<string | undefined>(undefined);
-
+  // ✅ token JWT
   const access = useMemo(() => localStorage.getItem("access") || "", []);
+
+  // PIX modal
+  const [isPixOpen, setIsPixOpen] = useState(false);
+
+  // valor do aporte (dinâmico)
+  const [amountInput, setAmountInput] = useState<string>("300,00");
+  const [amountNumber, setAmountNumber] = useState<number>(MIN_PIX_AMOUNT);
+
+  // request state
+  const [saving, setSaving] = useState(false);
+
+  // pix payload (retornado do backend/MP)
+  const [pix, setPix] = useState<PixChargeResponse | null>(null);
 
   // ✅ carrega o patrimônio real do banco e injeta em state.balanceCapital
   useEffect(() => {
@@ -30,15 +39,14 @@ export default function DashboardRoute() {
     (async () => {
       try {
         const sum = await getDashboardSummary(access);
-        const balanceCapital = sum.balance_capital_cents / 100;
+        const balanceCapital = (sum.balance_capital_cents || 0) / 100;
 
         setSystemState((prev) => ({
           ...prev,
-          balanceCapital,          // 🔥 aqui seu StatCard passa a mostrar do banco
-          totalContributed: balanceCapital, // opcional: se quiser alinhar o card Total Aportado
+          balanceCapital,
+          totalContributed: balanceCapital, // opcional: alinhar card
         }));
       } catch (e) {
-        // não trava o app
         console.warn("Resumo do dashboard falhou:", e);
       }
     })();
@@ -54,20 +62,69 @@ export default function DashboardRoute() {
     }
   };
 
-  // ✅ abre modal e gera PIX no backend (pix_code + external_ref)
-  const handleOpenPix = async () => {
+  // helpers
+  const parseBRL = (value: string) => {
+    const s = (value || "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace("R$", "")
+      .replace(/\./g, "")
+      .replace(",", ".");
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  };
+
+  const formatBRL = (n: number) => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(n);
+  };
+
+  // ✅ abre modal (NÃO gera pix automaticamente — igual Nubank)
+  const handleOpenPix = () => {
     if (!access) {
       alert("Sessão expirada. Faça login novamente.");
       navigate("/login", { replace: true });
       return;
     }
 
+    // reseta estado do pix para forçar gerar de novo ao clicar no botão do modal
+    setPix(null);
+    setIsPixOpen(true);
+  };
+
+  // ✅ valida e atualiza amountNumber quando digita
+  const handleAmountChange = (next: string) => {
+    setAmountInput(next);
+
+    const n = parseBRL(next);
+    if (!Number.isFinite(n)) return;
+
+    setAmountNumber(n);
+  };
+
+  // ✅ botão dentro do modal: gera cobrança pix no backend (Mercado Pago)
+  const handleGeneratePix = async () => {
+    if (!access) {
+      alert("Sessão expirada. Faça login novamente.");
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    const n = amountNumber;
+
+    if (!Number.isFinite(n) || n < MIN_PIX_AMOUNT) {
+      alert(`O valor mínimo para aporte é ${formatBRL(MIN_PIX_AMOUNT)}.`);
+      return;
+    }
+
     try {
       setSaving(true);
-      const charge = await createPixCharge(access, amount );
-      setPixCode(charge.pix_code);
-      setExternalRef(charge.external_ref);
-      setIsPixOpen(true);
+
+      // CHAMA BACKEND -> retorna pix_code + external_ref + qr_code_base64
+      const charge = await createPixCharge(access, n);
+      setPix(charge);
     } catch (err: any) {
       alert(err?.message ?? "Erro ao gerar Pix.");
     } finally {
@@ -83,21 +140,27 @@ export default function DashboardRoute() {
       return;
     }
 
+    // precisa ter gerado pix antes, porque o fluxo é "Nubank"
+    if (!pix?.external_ref) {
+      alert("Gere o Pix antes de confirmar o pagamento.");
+      return;
+    }
+
     try {
       setSaving(true);
 
       await createInvestment(access, {
-        amount,
+        amount: amountNumber,
         paid_at: new Date().toISOString(),
-        external_ref: refFromInput || externalRef,
+        external_ref: refFromInput || pix.external_ref,
       });
 
       setIsPixOpen(false);
 
-      // opcional: atualiza summary de novo (pra refletir pendente/contadores)
+      // atualiza summary
       try {
         const sum = await getDashboardSummary(access);
-        const balanceCapital = sum.balance_capital_cents / 100;
+        const balanceCapital = (sum.balance_capital_cents || 0) / 100;
         setSystemState((prev) => ({
           ...prev,
           balanceCapital,
@@ -125,9 +188,16 @@ export default function DashboardRoute() {
       <PixModal
         isOpen={isPixOpen}
         onClose={() => setIsPixOpen(false)}
+        onGeneratePix={handleGeneratePix}
         onConfirm={handleConfirmPaid}
-        amount={amount}
-        pixCode={pixCode}
+        minAmount={MIN_PIX_AMOUNT}
+        amountInput={amountInput}
+        onAmountChange={handleAmountChange}
+        amountNumber={amountNumber}
+        pixCode={pix?.pix_code || ""}
+        qrBase64={pix?.qr_code_base64 || ""}
+        externalRef={pix?.external_ref}
+        loading={saving}
       />
 
       {saving && (

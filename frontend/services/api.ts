@@ -65,25 +65,11 @@ export async function getDashboardSummary(access: string): Promise<DashboardSumm
 
 // -------------------- PIX --------------------//
 
-function normalizeAmount(value: unknown): number {
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new Error("Amount inválido (NaN/Infinity).");
-    return value;
-  }
-
-  // aceita string tipo "R$ 1.234,56" / "59,90" / "59.90"
-  const s = String(value)
-    .trim()
-    .replace(/\s/g, "")
-    .replace("R$", "")
-    .replace(/\./g, "")   // remove separador de milhar
-    .replace(",", ".");   // vírgula -> ponto
-
-  const n = Number(s);
-  if (!Number.isFinite(n)) throw new Error(`Amount inválido: ${JSON.stringify(value)}`);
-  return n;
-}
-
+export type PixChargeResponse = {
+  pix_code: string;
+  external_ref: string;
+  qr_code_base64?: string;
+};
 
 export async function createPixCharge(access: string, amount: number) {
   const res = await fetch(`${API_BASE}/api/pix/charge/`, {
@@ -96,8 +82,9 @@ export async function createPixCharge(access: string, amount: number) {
   });
 
   if (!res.ok) throw new Error(`Falha ao gerar Pix: ${res.status} ${await parseError(res)}`);
-  return res.json() as Promise<{ pix_code: string; external_ref: string }>;
+  return res.json() as Promise<PixChargeResponse>;
 }
+
 
 // --------------------INVESTMENT--------------------//
 
@@ -155,44 +142,68 @@ export async function getMeSummary(access: string) {
 }
 
 // --------------------------------- ADMIN -----------------------//
+// ... (seu API_BASE, parseError etc)
 
-export async function listAdminInvestments(access: string, status?: string) {
-  const url = new URL("http://127.0.0.1:8000/api/admin/investments/");
+export type AdminInvestmentItem = {
+  id: number;
+  amount_cents: number;
+  status: "PENDING" | "APPROVED" | "REJECTED" | string;
+  paid_at: string | null;
+  external_ref: string | null;
+  created_at: string;
+
+  // do serializer admin (select_related user)
+  user_id?: number;
+  username?: string;
+  email?: string;
+};
+
+export async function listAdminInvestments(access: string, status?: string): Promise<AdminInvestmentItem[]> {
+  const url = new URL(`${API_BASE}/api/admin/investments/`);
   if (status) url.searchParams.set("status", status);
 
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${access}` },
   });
 
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Falha ao listar admin investments: ${res.status} ${txt}`);
-  }
-  return res.json();
+  if (!res.ok) throw new Error(`Falha ao listar admin investments: ${res.status} ${await parseError(res)}`);
+  return await res.json();
 }
 
 export async function approveInvestment(access: string, id: number | string) {
-  const res = await fetch(`http://127.0.0.1:8000/api/admin/investments/${id}/approve/`, {
+  const res = await fetch(`${API_BASE}/api/admin/investments/${id}/approve/`, {
     method: "POST",
     headers: { Authorization: `Bearer ${access}` },
   });
 
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Falha ao aprovar: ${res.status} ${txt}`);
-  }
-  return res.json();
+  if (!res.ok) throw new Error(`Falha ao aprovar: ${res.status} ${await parseError(res)}`);
+  return await res.json();
 }
 
 export async function rejectInvestment(access: string, id: number | string) {
-  const res = await fetch(`http://127.0.0.1:8000/api/admin/investments/${id}/reject/`, {
+  const res = await fetch(`${API_BASE}/api/admin/investments/${id}/reject/`, {
     method: "POST",
     headers: { Authorization: `Bearer ${access}` },
   });
 
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Falha ao rejeitar: ${res.status} ${txt}`);
-  }
-  return res.json();
+  if (!res.ok) throw new Error(`Falha ao rejeitar: ${res.status} ${await parseError(res)}`);
+  return await res.json();
+}
+
+// AdminSummary
+
+export type AdminSummary = {
+  tvl_approved_cents: number;
+  pending_cents: number;
+  approved_count: number;
+  pending_count: number;
+};
+
+export async function getAdminSummary(access: string): Promise<AdminSummary> {
+  const res = await fetch(`${API_BASE}/api/admin/summary/`, {
+    headers: { Authorization: `Bearer ${access}` },
+  });
+
+  if (!res.ok) throw new Error(`Falha ao carregar admin summary: ${res.status} ${await parseError(res)}`);
+  return await res.json();
 }
