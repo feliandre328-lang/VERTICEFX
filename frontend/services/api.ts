@@ -65,6 +65,26 @@ export async function getDashboardSummary(access: string): Promise<DashboardSumm
 
 // -------------------- PIX --------------------//
 
+function normalizeAmount(value: unknown): number {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("Amount inválido (NaN/Infinity).");
+    return value;
+  }
+
+  // aceita string tipo "R$ 1.234,56" / "59,90" / "59.90"
+  const s = String(value)
+    .trim()
+    .replace(/\s/g, "")
+    .replace("R$", "")
+    .replace(/\./g, "")   // remove separador de milhar
+    .replace(",", ".");   // vírgula -> ponto
+
+  const n = Number(s);
+  if (!Number.isFinite(n)) throw new Error(`Amount inválido: ${JSON.stringify(value)}`);
+  return n;
+}
+
+
 export async function createPixCharge(access: string, amount: number) {
   const res = await fetch(`${API_BASE}/api/pix/charge/`, {
     method: "POST",

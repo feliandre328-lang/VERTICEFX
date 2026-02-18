@@ -64,7 +64,7 @@ export default function DashboardRoute() {
 
     try {
       setSaving(true);
-      const charge = await createPixCharge(access, { amount });
+      const charge = await createPixCharge(access, amount );
       setPixCode(charge.pix_code);
       setExternalRef(charge.external_ref);
       setIsPixOpen(true);

@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Investment
-
+from decimal import Decimal
 User = get_user_model()
 
 
@@ -65,13 +65,14 @@ class AdminInvestmentSerializer(serializers.ModelSerializer):
 
 
 class PixChargeCreateSerializer(serializers.Serializer):
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    amount = serializers.CharField()
 
     def validate_amount(self, value):
-        if value < 300:
-            raise serializers.ValidationError("Valor mínimo do Pix é R$ 300,00.")
-        return value
-
+        v = value.strip().replace("R$", "").replace(".", "").replace(",", ".")
+        try:
+            return Decimal(v)
+        except:
+            raise serializers.ValidationError("A valid number is required.")
 
 class PixChargeResponseSerializer(serializers.Serializer):
     pix_code = serializers.CharField()
