@@ -1,0 +1,72 @@
+name: Deploy Frontend to Host (SSH)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "frontend-deploy-host"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.HOST_NAME || secrets.HOSTNAME }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.HOST_USER || secrets.SSH_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || 22 }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/verticefx' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+          VITE_PIX_KEY: ${{ secrets.VITE_PIX_KEY }}
+          VITE_PIX_MERCHANT_NAME: ${{ secrets.VITE_PIX_MERCHANT_NAME }}
+          VITE_PIX_MERCHANT_CITY: ${{ secrets.VITE_PIX_MERCHANT_CITY }}
+        run: npm run build
+
+      - name: Validate deploy config
+        run: |
+          if [ -z "${DEPLOY_HOST}" ]; then echo "Missing DEPLOY_HOST/HOST_NAME/HOSTNAME secret"; exit 1; fi
+          if [ -z "${DEPLOY_USER}" ]; then echo "Missing DEPLOY_USER/HOST_USER/SSH_USER secret"; exit 1; fi
+
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${DEPLOY_PORT}" -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Upload dist to host
+        run: |
+          rsync -az --delete \
+            -e "ssh -p ${DEPLOY_PORT}" \
+            dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+
+      - name: Optional post deploy command
+        if: ${{ secrets.DEPLOY_POST_CMD != '' }}
+        run: |
+          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" "${{ secrets.DEPLOY_POST_CMD }}"

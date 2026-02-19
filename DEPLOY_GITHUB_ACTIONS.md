@@ -1,53 +1,43 @@
-# Deploy com GitHub Actions (Frontend)
+# Deploy com GitHub Actions (Host proprio via SSH)
 
-Este projeto agora tem workflow em:
+Este projeto agora usa workflow em:
 
-- `.github/workflows/deploy-frontend-pages.yml`
+- `.github/workflows/deploy-frontend-host.yml`
 
 Ele faz:
 
 1. build do frontend (`npm ci` + `npm run build`)
-2. publish automático no GitHub Pages quando houver push em `main`
+2. upload da pasta `frontend/dist/` para seu servidor via SSH/rsync
 
-## 1) Ativar GitHub Pages no repositório
+## Secrets necessarios
 
-No GitHub:
+Em `Settings -> Secrets and variables -> Actions`, configure:
 
-1. `Settings`
-2. `Pages`
-3. Em `Source`, selecione `GitHub Actions`
+- `SSH_PRIVATE_KEY` (chave privada para acesso no host)
+- `DEPLOY_HOST` (ou `HOST_NAME` / `HOSTNAME`)
+- `DEPLOY_USER` (ou `HOST_USER` / `SSH_USER`)
+- `DEPLOY_PORT` (opcional, default `22`)
+- `DEPLOY_PATH` (opcional, default `/var/www/verticefx`)
 
-Observacao:
-- O workflow ja tenta habilitar Pages automaticamente (`enablement: true`).
-- Se o token nao tiver permissao de administracao do repositorio, voce ainda precisara fazer essa ativacao manual uma vez.
+Variaveis de build frontend:
 
-## 2) Configurar Secrets do repositório
-
-No GitHub:
-
-1. `Settings`
-2. `Secrets and variables` -> `Actions`
-3. Criar os secrets abaixo:
-
-- `VITE_API_BASE` (URL da sua API em produção, ex: `https://api.seudominio.com/api`)
+- `VITE_API_BASE`
 - `VITE_PIX_KEY`
 - `VITE_PIX_MERCHANT_NAME`
 - `VITE_PIX_MERCHANT_CITY`
 
-## 3) Publicar
+Opcional:
 
-Basta fazer push para `dev`:
+- `DEPLOY_POST_CMD` (comando remoto apos upload, ex: `sudo systemctl reload nginx`)
+
+## Publicar
+
+Push na `main`:
 
 ```bash
 git add .
-git commit -m "chore: add github actions deploy"
-git push origin dev
+git commit -m "chore: deploy frontend to host via github actions"
+git push origin main
 ```
 
-## URL final
-
-Após o deploy, a URL fica em:
-
-- `https://<seu-user>.github.io/<seu-repo>/`
-
-Se usar domínio próprio, configure depois em `Settings -> Pages`.
+Ou rode manualmente em `Actions -> Deploy Frontend to Host (SSH)`.
