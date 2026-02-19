@@ -6,9 +6,23 @@ import PixModal from "../components/PixModal";
 
 import * as FinanceService from "../services/financialService";
 import { SystemState } from "../types";
-import { createInvestment, createPixCharge, getDashboardSummary, PixChargeResponse } from "../services/api";
+import { createInvestment, getDashboardSummary } from "../services/api";
+import { generatePIXCode } from "../services/pixService";
 
 const MIN_PIX_AMOUNT = 300;
+
+type LocalPixPayload = {
+  pix_code: string;
+  external_ref: string;
+  qr_code_base64?: string;
+};
+
+function createLocalTxid() {
+  const timePart = Date.now().toString(36).toUpperCase();
+  const randomPart = Math.random().toString(36).slice(2, 10).toUpperCase();
+  // Limite recomendado do txid no BR Code: ate 25 chars
+  return `VFX${timePart}${randomPart}`.slice(0, 25);
+}
 
 export default function DashboardRoute() {
   const navigate = useNavigate();
@@ -29,8 +43,8 @@ export default function DashboardRoute() {
   // request state
   const [saving, setSaving] = useState(false);
 
-  // pix payload (retornado do backend/MP)
-  const [pix, setPix] = useState<PixChargeResponse | null>(null);
+  // pix payload local (sem Mercado Pago)
+  const [pix, setPix] = useState<LocalPixPayload | null>(null);
 
   // ✅ carrega o patrimônio real do banco e injeta em state.balanceCapital
   useEffect(() => {
@@ -104,7 +118,7 @@ export default function DashboardRoute() {
     setAmountNumber(n);
   };
 
-  // ✅ botão dentro do modal: gera cobrança pix no backend (Mercado Pago)
+  // ✅ botao dentro do modal: gera Pix local (copia e cola + QR)
   const handleGeneratePix = async () => {
     if (!access) {
       alert("Sessão expirada. Faça login novamente.");
@@ -120,15 +134,15 @@ export default function DashboardRoute() {
     }
 
     try {
-      setSaving(true);
+      const txid = createLocalTxid();
+      const pixCode = generatePIXCode(n, txid);
 
-      // CHAMA BACKEND -> retorna pix_code + external_ref + qr_code_base64
-      const charge = await createPixCharge(access, n);
-      setPix(charge);
+      setPix({
+        pix_code: pixCode,
+        external_ref: txid,
+      });
     } catch (err: any) {
-      alert(err?.message ?? "Erro ao gerar Pix.");
-    } finally {
-      setSaving(false);
+      alert(err?.message ?? "Erro ao gerar Pix local.");
     }
   };
 

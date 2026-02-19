@@ -18,7 +18,7 @@ interface PixModalProps {
 
   // payload
   pixCode: string;
-  qrBase64?: string; // MercadoPago
+  qrBase64?: string;
   externalRef?: string;
 
   loading?: boolean;
@@ -51,7 +51,7 @@ export default function PixModal({
     []
   );
 
-  // fallback QR via library (se não vier base64)
+  // fallback QR via library (quando nao vier imagem base64)
   useEffect(() => {
     if (!isOpen) return;
     setIsCopied(false);
@@ -87,9 +87,9 @@ export default function PixModal({
             <p className="text-xs text-slate-400 mt-1">
               Valor do aporte:{" "}
               <span className="text-slate-200 font-semibold">{formatBRL(amountNumber)}</span>{" "}
-              <span className="text-slate-500">(mínimo {formatBRL(minAmount)})</span>
+              <span className="text-slate-500">(minimo {formatBRL(minAmount)})</span>
             </p>
-            {externalRef ? <p className="text-[10px] text-slate-500 mt-1">Cobrança: {externalRef}</p> : null}
+            {externalRef ? <p className="text-[10px] text-slate-500 mt-1">TXID: {externalRef}</p> : null}
           </div>
 
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-white">
@@ -120,7 +120,7 @@ export default function PixModal({
             </button>
 
             <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
-              Dica: digite com vírgula (ex: <b>300,00</b>). O sistema envia pro backend como número válido.
+              Dica: digite com virgula (ex: <b>300,00</b>). O QR e o copia e cola sao gerados localmente.
             </p>
           </div>
 
@@ -143,7 +143,7 @@ export default function PixModal({
 
           {/* copia e cola */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-4">
-            <div className="text-xs text-slate-400 mb-2">Pix “copia e cola”</div>
+            <div className="text-xs text-slate-400 mb-2">Pix "copia e cola"</div>
             <div className="text-[11px] text-slate-200 break-all p-3 rounded-lg bg-slate-950 border border-slate-800">
               {pixCode || "(vazio)"}
             </div>
@@ -154,15 +154,13 @@ export default function PixModal({
               disabled={!pixCode}
             >
               {isCopied ? <Check size={16} /> : <Copy size={16} />}
-              {isCopied ? "Copiado" : "Copiar código"}
+              {isCopied ? "Copiado" : "Copiar codigo"}
             </button>
           </div>
 
           {/* external ref opcional */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-4">
-            <label className="block text-xs text-slate-400 mb-2">
-              Referência externa (opcional) — se você quiser sobrescrever
-            </label>
+            <label className="block text-xs text-slate-400 mb-2">Referencia externa (opcional)</label>
             <input
               value={externalRefInput}
               onChange={(e) => setExternalRefInput(e.target.value)}
@@ -172,7 +170,7 @@ export default function PixModal({
             />
 
             <p className="mt-2 text-[11px] text-slate-500">
-              Normalmente você não precisa preencher — usamos a referência gerada na cobrança.
+              Normalmente voce nao precisa preencher. Se preencher, este valor sera salvo no aporte.
             </p>
           </div>
 
