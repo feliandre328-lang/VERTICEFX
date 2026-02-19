@@ -32,12 +32,12 @@ Opcional:
 
 ## Publicar
 
-Push na `main`:
+Push na `dev`:
 
 ```bash
 git add .
 git commit -m "chore: deploy frontend to host via github actions"
-git push origin main
+git push origin dev
 ```
 
 Ou rode manualmente em `Actions -> Deploy Frontend to Host (SSH)`.
