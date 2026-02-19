@@ -11,12 +11,23 @@ Ele faz:
 
 ## Secrets necessarios
 
-Em `Settings -> Secrets and variables -> Actions`, configure:
+Em `Settings -> Secrets and variables -> Actions`, configure (nomes que voce ja tem):
 
-- `SSH_PRIVATE_KEY` (chave privada para acesso no host)
-- `DEPLOY_HOST` (ou `HOST_NAME` / `HOSTNAME`)
-- `DEPLOY_USER` (ou `HOST_USER` / `SSH_USER`)
-- `DEPLOY_PORT` (opcional, default `22`)
+- `SSH_KEY` (chave privada para acesso no host)
+- `SSH_HOST`
+- `SSH_PORT` (opcional, default `22`)
+- `REPO_SSH_URL` (fallback para extrair usuario/host, ex: `git@seu-host:repo.git`)
+
+Tambem aceitos como fallback:
+- `SSH_PRIVATE_KEY`
+- `DEPLOY_HOST` / `HOST_NAME` / `HOSTNAME`
+- `SSH_USER` / `DEPLOY_USER` / `HOST_USER`
+- `DEPLOY_PORT`
+- `DEPLOY_PATH` (opcional, default `/var/www/verticefx`)
+
+Se nao tiver `SSH_USER`, o workflow tenta extrair de `REPO_SSH_URL`.
+
+Opcional:
 - `DEPLOY_PATH` (opcional, default `/var/www/verticefx`)
 
 Variaveis de build frontend:
@@ -25,8 +36,6 @@ Variaveis de build frontend:
 - `VITE_PIX_KEY`
 - `VITE_PIX_MERCHANT_NAME`
 - `VITE_PIX_MERCHANT_CITY`
-
-Opcional:
 
 - `DEPLOY_POST_CMD` (comando remoto apos upload, ex: `sudo systemctl reload nginx`)
 

@@ -19,9 +19,10 @@ jobs:
       run:
         working-directory: frontend
     env:
-      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || secrets.HOST_NAME || secrets.HOSTNAME }}
-      DEPLOY_USER: ${{ secrets.DEPLOY_USER || secrets.HOST_USER || secrets.SSH_USER }}
-      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || 22 }}
+      REPO_SSH_URL: ${{ secrets.REPO_SSH_URL }}
+      DEPLOY_HOST: ${{ secrets.SSH_HOST || secrets.DEPLOY_HOST || secrets.HOST_NAME || secrets.HOSTNAME }}
+      DEPLOY_USER: ${{ secrets.SSH_USER || secrets.DEPLOY_USER || secrets.HOST_USER }}
+      DEPLOY_PORT: ${{ secrets.SSH_PORT || secrets.DEPLOY_PORT || 22 }}
       DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/verticefx' }}
     steps:
       - name: Checkout
@@ -45,28 +46,42 @@ jobs:
           VITE_PIX_MERCHANT_CITY: ${{ secrets.VITE_PIX_MERCHANT_CITY }}
         run: npm run build
 
-      - name: Validate deploy config
+      - name: Resolve deploy target
         run: |
-          if [ -z "${DEPLOY_HOST}" ]; then echo "Missing DEPLOY_HOST/HOST_NAME/HOSTNAME secret"; exit 1; fi
-          if [ -z "${DEPLOY_USER}" ]; then echo "Missing DEPLOY_USER/HOST_USER/SSH_USER secret"; exit 1; fi
+          RESOLVED_HOST="${DEPLOY_HOST}"
+          RESOLVED_USER="${DEPLOY_USER}"
+
+          # fallback parse from REPO_SSH_URL (ex: git@host:repo.git)
+          if [ -z "${RESOLVED_HOST}" ] && [ -n "${REPO_SSH_URL}" ]; then
+            RESOLVED_HOST="$(echo "${REPO_SSH_URL}" | sed -E 's#^[^@]+@([^:/]+).*#\1#')"
+          fi
+          if [ -z "${RESOLVED_USER}" ] && [ -n "${REPO_SSH_URL}" ]; then
+            RESOLVED_USER="$(echo "${REPO_SSH_URL}" | sed -E 's#^([^@]+)@.*#\1#')"
+          fi
+
+          if [ -z "${RESOLVED_HOST}" ]; then echo "Missing SSH_HOST (or REPO_SSH_URL parseable host)"; exit 1; fi
+          if [ -z "${RESOLVED_USER}" ]; then echo "Missing SSH_USER/DEPLOY_USER (or REPO_SSH_URL parseable user)"; exit 1; fi
+
+          echo "RESOLVED_DEPLOY_HOST=${RESOLVED_HOST}" >> "$GITHUB_ENV"
+          echo "RESOLVED_DEPLOY_USER=${RESOLVED_USER}" >> "$GITHUB_ENV"
 
       - name: Setup SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY }}
 
       - name: Add host to known_hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -p "${DEPLOY_PORT}" -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
+          ssh-keyscan -p "${DEPLOY_PORT}" -H "${RESOLVED_DEPLOY_HOST}" >> ~/.ssh/known_hosts
 
       - name: Upload dist to host
         run: |
           rsync -az --delete \
             -e "ssh -p ${DEPLOY_PORT}" \
-            dist/ "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+            dist/ "${RESOLVED_DEPLOY_USER}@${RESOLVED_DEPLOY_HOST}:${DEPLOY_PATH}/"
 
       - name: Optional post deploy command
         if: ${{ secrets.DEPLOY_POST_CMD != '' }}
         run: |
-          ssh -p "${DEPLOY_PORT}" "${DEPLOY_USER}@${DEPLOY_HOST}" "${{ secrets.DEPLOY_POST_CMD }}"
+          ssh -p "${DEPLOY_PORT}" "${RESOLVED_DEPLOY_USER}@${RESOLVED_DEPLOY_HOST}" "${{ secrets.DEPLOY_POST_CMD }}"
