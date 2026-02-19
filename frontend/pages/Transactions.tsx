@@ -18,8 +18,187 @@ type StatementRow = {
   direction: "IN" | "OUT";
 };
 
+const PAGE_WIDTH = 595;
+const PAGE_HEIGHT = 842;
+const TABLE_X = 45;
+const TABLE_W = 505;
+const ROW_H = 24;
+const ROWS_PER_PAGE = 19;
+
+const toAscii = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, "");
+
+const escapePdfText = (value: string) =>
+  value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+
+function buildPdfBytes(pageStreams: string[]): Uint8Array {
+  const objects: string[] = [];
+
+  const fontObjectNumber = 3;
+  const firstPageObject = 4;
+
+  const pageObjectNumbers: number[] = [];
+  const contentObjectNumbers: number[] = [];
+
+  for (let i = 0; i < pageStreams.length; i++) {
+    pageObjectNumbers.push(firstPageObject + i * 2);
+    contentObjectNumbers.push(firstPageObject + i * 2 + 1);
+  }
+
+  const kidsRef = pageObjectNumbers.map((n) => `${n} 0 R`).join(" ");
+
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] = `<< /Type /Pages /Kids [${kidsRef}] /Count ${pageStreams.length} >>`;
+  objects[fontObjectNumber] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+
+  for (let i = 0; i < pageStreams.length; i++) {
+    const pageObj = pageObjectNumbers[i];
+    const contentObj = contentObjectNumbers[i];
+    const stream = pageStreams[i];
+
+    objects[contentObj] = `<< /Length ${stream.length} >>
+stream
+${stream}
+endstream`;
+
+    objects[pageObj] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 ${fontObjectNumber} 0 R >> >> /Contents ${contentObj} 0 R >>`;
+  }
+
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [];
+
+  for (let i = 1; i < objects.length; i++) {
+    if (!objects[i]) continue;
+    offsets[i] = pdf.length;
+    pdf += `${i} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+
+  const xrefOffset = pdf.length;
+  const size = objects.length;
+
+  pdf += `xref
+0 ${size}
+0000000000 65535 f 
+`;
+
+  for (let i = 1; i < size; i++) {
+    const off = String(offsets[i] || 0).padStart(10, "0");
+    pdf += `${off} 00000 n \n`;
+  }
+
+  pdf += `trailer
+<< /Size ${size} /Root 1 0 R >>
+startxref
+${xrefOffset}
+%%EOF`;
+
+  return new TextEncoder().encode(pdf);
+}
+
+const formatPdfMoney = (value: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+
+const safeCell = (value: string, max = 20) => {
+  const normalized = toAscii(value || "");
+  if (normalized.length <= max) return normalized;
+  return `${normalized.slice(0, max - 3)}...`;
+};
+
+const textCmd = (x: number, y: number, size: number, text: string) =>
+  `0.12 0.16 0.22 rg
+BT /F1 ${size} Tf ${x} ${y} Td (${escapePdfText(toAscii(text))}) Tj ET`;
+
+function buildPageStream(params: {
+  rows: StatementRow[];
+  pageIndex: number;
+  pageCount: number;
+  clientName: string;
+  clientEmail: string;
+  clientId: string;
+  role: string;
+  totalIn: number;
+  totalOut: number;
+}) {
+  const { rows, pageIndex, pageCount, clientName, clientEmail, clientId, role, totalIn, totalOut } = params;
+
+  const cmds: string[] = [];
+
+  cmds.push("0.95 0.97 1 rg");
+  cmds.push("40 752 515 70 re f");
+
+  // Logo vetorial inspirada na marca do sidebar (triangulo + barras)
+  cmds.push("0.15 0.39 0.93 rg");
+  cmds.push("64 812 m 82 772 l 46 772 l h f");
+  cmds.push("0.06 0.72 0.51 rg");
+  cmds.push("57 778 4 14 re f");
+  cmds.push("64 778 4 24 re f");
+  cmds.push("71 778 4 34 re f");
+
+  cmds.push(textCmd(98, 797, 18, "VERTICE FX"));
+  cmds.push(textCmd(98, 780, 10, "Extrato Financeiro"));
+  cmds.push(textCmd(425, 780, 9, `Pagina ${pageIndex + 1}/${pageCount}`));
+
+  cmds.push("0.86 0.89 0.94 RG 1 w");
+  cmds.push("40 744 m 555 744 l S");
+
+  // Bloco cliente
+  cmds.push("0.98 0.99 1 rg");
+  cmds.push("40 676 515 56 re f");
+  cmds.push("0.87 0.9 0.95 RG 1 w");
+  cmds.push("40 676 515 56 re S");
+
+  cmds.push(textCmd(50, 718, 9, `Cliente: ${clientName}`));
+  cmds.push(textCmd(50, 704, 9, `Email: ${clientEmail}`));
+  cmds.push(textCmd(50, 690, 9, `ID: ${clientId} | Perfil: ${role}`));
+
+  cmds.push(textCmd(330, 718, 9, `Entradas: ${toAscii(formatPdfMoney(totalIn))}`));
+  cmds.push(textCmd(330, 704, 9, `Saidas: ${toAscii(formatPdfMoney(totalOut))}`));
+  cmds.push(textCmd(330, 690, 9, `Liquido: ${toAscii(formatPdfMoney(totalIn - totalOut))}`));
+
+  // Header tabela
+  cmds.push("0.92 0.94 0.97 rg");
+  cmds.push(`${TABLE_X} 648 ${TABLE_W} ${ROW_H} re f`);
+  cmds.push("0.8 0.84 0.9 RG 1 w");
+  cmds.push(`${TABLE_X} 648 ${TABLE_W} ${ROW_H} re S`);
+
+  cmds.push(textCmd(52, 656, 9, "Data"));
+  cmds.push(textCmd(128, 656, 9, "Operacao"));
+  cmds.push(textCmd(208, 656, 9, "ID"));
+  cmds.push(textCmd(302, 656, 9, "Status"));
+  cmds.push(textCmd(455, 656, 9, "Valor"));
+
+  const tableStartY = 648 - ROW_H;
+  rows.forEach((row, idx) => {
+    const y = tableStartY - idx * ROW_H;
+
+    if (idx % 2 === 0) {
+      cmds.push("0.985 0.988 0.995 rg");
+      cmds.push(`${TABLE_X} ${y} ${TABLE_W} ${ROW_H} re f`);
+    }
+
+    cmds.push("0.9 0.92 0.95 RG 0.8 w");
+    cmds.push(`${TABLE_X} ${y} ${TABLE_W} ${ROW_H} re S`);
+
+    const valueLabel = `${row.direction === "OUT" ? "-" : "+"}${formatPdfMoney(row.amount)}`;
+
+    cmds.push(textCmd(52, y + 8, 9, new Date(row.date).toLocaleDateString("pt-BR")));
+    cmds.push(textCmd(128, y + 8, 9, row.operation));
+    cmds.push(textCmd(208, y + 8, 9, safeCell(row.id, 14)));
+    cmds.push(textCmd(302, y + 8, 9, safeCell(row.status, 14)));
+    cmds.push(textCmd(432, y + 8, 9, toAscii(valueLabel)));
+  });
+
+  cmds.push(textCmd(40, 38, 8, "Documento gerado automaticamente pela plataforma Vertice FX."));
+  cmds.push(textCmd(40, 26, 8, `Emitido em ${new Date().toLocaleString("pt-BR")}`));
+
+  return cmds.join("\n");
+}
+
 const Transactions: React.FC<TransactionsProps> = ({ state }) => {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, user, role } = useAuth();
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
   const [investments, setInvestments] = useState<InvestmentItem[]>([]);
@@ -107,11 +286,57 @@ const Transactions: React.FC<TransactionsProps> = ({ state }) => {
     </span>
   );
 
+  const handleExportPdf = () => {
+    if (rows.length === 0) {
+      alert("Sem dados para exportar.");
+      return;
+    }
+
+    const totalIn = rows.filter((r) => r.direction === "IN").reduce((sum, r) => sum + r.amount, 0);
+    const totalOut = rows.filter((r) => r.direction === "OUT").reduce((sum, r) => sum + r.amount, 0);
+
+    const chunks: StatementRow[][] = [];
+    for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) {
+      chunks.push(rows.slice(i, i + ROWS_PER_PAGE));
+    }
+
+    const pageStreams = chunks.map((chunk, idx) =>
+      buildPageStream({
+        rows: chunk,
+        pageIndex: idx,
+        pageCount: chunks.length,
+        clientName: user?.username || "Cliente",
+        clientEmail: user?.email || "-",
+        clientId: user?.id ? String(user.id) : "-",
+        role: role || "CLIENT",
+        totalIn,
+        totalOut,
+      })
+    );
+
+    const pdfBytes = buildPdfBytes(pageStreams);
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+
+    const dateSuffix = new Date().toISOString().slice(0, 10);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `extrato-financeiro-${dateSuffix}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 sm:gap-0">
         <h2 className="text-xl font-bold text-white">Extrato Financeiro</h2>
-        <button className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition-colors text-xs font-medium w-full sm:w-auto">
+        <button
+          onClick={handleExportPdf}
+          disabled={rows.length === 0}
+          className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-300 rounded border border-slate-700 transition-colors text-xs font-medium w-full sm:w-auto"
+        >
           <Download size={14} />
           Exportar PDF
         </button>
