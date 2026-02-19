@@ -1,32 +1,70 @@
-const API_BASE = "http://127.0.0.1:8000";
+// api.ts (completo)
+// - Produção: VITE_API_BASE=/api  (via Nginx proxy)
+// - Dev local: VITE_API_BASE=http://127.0.0.1:8000/api
+// Observação: com API_BASE = "/api", NÃO use "/api" de novo nos endpoints.
 
-type TokenPair = { access: string; refresh: string };
-async function parseError(res: Response) {
+export const API_BASE: string = import.meta.env.VITE_API_BASE ?? "/api";
+
+// -------------------- HELPERS -------------------- //
+
+type ApiError = { detail?: string; message?: string; [k: string]: any };
+
+async function readBodyOnce(res: Response): Promise<{ raw: string; json: any | null }> {
+  const raw = await res.text(); // ✅ lê 1 vez apenas
   try {
-    const data = await res.json();
-    if (typeof data?.detail === "string") return data.detail;
-    return JSON.stringify(data);
+    return { raw, json: raw ? JSON.parse(raw) : null };
   } catch {
-    return await res.text();
+    return { raw, json: null };
   }
 }
 
-// -------------------- AUTH--------------------//
+function formatError(status: number, raw: string, json: ApiError | null) {
+  const msg =
+    (json && (json.detail || json.message)) ||
+    (json ? JSON.stringify(json) : "") ||
+    raw ||
+    `Erro ${status}`;
+  return msg;
+}
 
 function authHeaders(access: string) {
   if (!access) throw new Error("Token ausente. Faça login novamente.");
   return { Authorization: `Bearer ${access}` };
 }
 
-export async function login(username: string, password: string) {
-  const res = await fetch(`${API_BASE}/api/auth/token/`, {
+function withQuery(path: string, params?: Record<string, string | number | boolean | null | undefined>) {
+  if (!params) return path;
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "");
+  if (!entries.length) return path;
+
+  const qs = new URLSearchParams();
+  for (const [k, v] of entries) qs.set(k, String(v));
+
+  return `${path}${path.includes("?") ? "&" : "?"}${qs.toString()}`;
+}
+
+// -------------------- AUTH -------------------- //
+
+export type TokenPair = { access: string; refresh: string };
+
+export async function login(username: string, password: string): Promise<TokenPair> {
+  const res = await fetch(`${API_BASE}/auth/token/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
   });
 
-  if (!res.ok) throw new Error(`Falha no login: ${res.status} ${await parseError(res)}`);
-  return res.json() as Promise<{ access: string; refresh: string }>;
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha no login: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  if (!json?.access || !json?.refresh) {
+    throw new Error("Falha no login: resposta inválida do servidor.");
+  }
+
+  return json as TokenPair;
 }
 
 export type Me = {
@@ -38,14 +76,20 @@ export type Me = {
 };
 
 export async function fetchMe(accessToken: string): Promise<Me> {
-  const res = await fetch(`${API_BASE}/api/auth/me/`, {
+  const res = await fetch(`${API_BASE}/auth/me/`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error(`Falha ao carregar usuário: ${res.status} ${await parseError(res)}`);
-  return res.json();
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar usuário: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as Me;
 }
 
-// -------------------- DASHBOARD SUMMARY --------------------//
+// -------------------- DASHBOARD SUMMARY -------------------- //
 
 export type DashboardSummary = {
   balance_capital_cents: number;
@@ -55,15 +99,20 @@ export type DashboardSummary = {
 };
 
 export async function getDashboardSummary(access: string): Promise<DashboardSummary> {
-  const res = await fetch(`${API_BASE}/api/dashboard/summary/`, {
-    headers: { Authorization: `Bearer ${access}` },
+  const res = await fetch(`${API_BASE}/dashboard/summary/`, {
+    headers: authHeaders(access),
   });
 
-  if (!res.ok) throw new Error(`Falha ao carregar resumo: ${res.status} ${await parseError(res)}`);
-  return await res.json();
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar resumo: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as DashboardSummary;
 }
 
-// -------------------- PIX --------------------//
+// -------------------- PIX -------------------- //
 
 export type PixChargeResponse = {
   pix_code: string;
@@ -71,48 +120,26 @@ export type PixChargeResponse = {
   qr_code_base64?: string;
 };
 
-export async function createPixCharge(access: string, amount: number) {
-  const res = await fetch(`${API_BASE}/api/pix/charge/`, {
+export async function createPixCharge(access: string, amount: number): Promise<PixChargeResponse> {
+  const res = await fetch(`${API_BASE}/pix/charge/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${access}`,
+      ...authHeaders(access),
     },
     body: JSON.stringify({ amount }),
   });
 
-  if (!res.ok) throw new Error(`Falha ao gerar Pix: ${res.status} ${await parseError(res)}`);
-  return res.json() as Promise<PixChargeResponse>;
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao gerar Pix: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as PixChargeResponse;
 }
 
-
-// --------------------INVESTMENT--------------------//
-
-export async function createInvestment(
-  access: string,
-  data: { amount: number; external_ref?: string; paid_at?: string }
-) {
-  const res = await fetch(`${API_BASE}/api/investments/`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${access}`,
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!res.ok) throw new Error(`Falha ao registrar aporte: ${res.status} ${await parseError(res)}`);
-  return res.json();
-}
-
-export async function listInvestments(access: string) {
-  const res = await fetch(`${API_BASE}/api/investments/`, {
-    headers: { Authorization: `Bearer ${access}` },
-  });
-
-  if (!res.ok) throw new Error(`Falha ao listar aportes: ${res.status} ${await parseError(res)}`);
-  return res.json();
-}
+// -------------------- INVESTMENT -------------------- //
 
 export type InvestmentItem = {
   id: number | string;
@@ -124,25 +151,62 @@ export type InvestmentItem = {
   created_at: string;
 };
 
-// -------------------- SUMMARY --------------------//
-
-export async function getMeSummary(access: string) {
-  const res = await fetch(`${API_BASE}/api/me/summary/`, {
-    headers: { Authorization: `Bearer ${access}` },
+export async function createInvestment(
+  access: string,
+  data: { amount: number; external_ref?: string; paid_at?: string }
+) {
+  const res = await fetch(`${API_BASE}/investments/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify(data),
   });
 
+  const { raw, json } = await readBodyOnce(res);
+
   if (!res.ok) {
-    throw new Error(`Falha ao buscar resumo: ${res.status} ${await parseError(res)}`);
+    throw new Error(`Falha ao registrar aporte: ${res.status} ${formatError(res.status, raw, json)}`);
   }
 
-  return res.json() as Promise<{
+  return json;
+}
+
+export async function listInvestments(access: string): Promise<InvestmentItem[]> {
+  const res = await fetch(`${API_BASE}/investments/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao listar aportes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return (json ?? []) as InvestmentItem[];
+}
+
+// -------------------- SUMMARY -------------------- //
+
+export async function getMeSummary(access: string) {
+  const res = await fetch(`${API_BASE}/me/summary/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar resumo: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as Promise<{
     total_invested: number;
     count_investments: number;
   }>;
 }
 
-// --------------------------------- ADMIN -----------------------//
-// ... (seu API_BASE, parseError etc)
+// -------------------- ADMIN -------------------- //
 
 export type AdminInvestmentItem = {
   id: number;
@@ -158,39 +222,54 @@ export type AdminInvestmentItem = {
   email?: string;
 };
 
-export async function listAdminInvestments(access: string, status?: string): Promise<AdminInvestmentItem[]> {
-  const url = new URL(`${API_BASE}/api/admin/investments/`);
-  if (status) url.searchParams.set("status", status);
+export async function listAdminInvestments(
+  access: string,
+  status?: string
+): Promise<AdminInvestmentItem[]> {
+  const url = withQuery(`${API_BASE}/admin/investments/`, { status });
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${access}` },
+  const res = await fetch(url, {
+    headers: authHeaders(access),
   });
 
-  if (!res.ok) throw new Error(`Falha ao listar admin investments: ${res.status} ${await parseError(res)}`);
-  return await res.json();
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao listar admin investments: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return (json ?? []) as AdminInvestmentItem[];
 }
 
 export async function approveInvestment(access: string, id: number | string) {
-  const res = await fetch(`${API_BASE}/api/admin/investments/${id}/approve/`, {
+  const res = await fetch(`${API_BASE}/admin/investments/${id}/approve/`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${access}` },
+    headers: authHeaders(access),
   });
 
-  if (!res.ok) throw new Error(`Falha ao aprovar: ${res.status} ${await parseError(res)}`);
-  return await res.json();
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao aprovar: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json;
 }
 
 export async function rejectInvestment(access: string, id: number | string) {
-  const res = await fetch(`${API_BASE}/api/admin/investments/${id}/reject/`, {
+  const res = await fetch(`${API_BASE}/admin/investments/${id}/reject/`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${access}` },
+    headers: authHeaders(access),
   });
 
-  if (!res.ok) throw new Error(`Falha ao rejeitar: ${res.status} ${await parseError(res)}`);
-  return await res.json();
-}
+  const { raw, json } = await readBodyOnce(res);
 
-// AdminSummary
+  if (!res.ok) {
+    throw new Error(`Falha ao rejeitar: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json;
+}
 
 export type AdminSummary = {
   tvl_approved_cents: number;
@@ -200,10 +279,15 @@ export type AdminSummary = {
 };
 
 export async function getAdminSummary(access: string): Promise<AdminSummary> {
-  const res = await fetch(`${API_BASE}/api/admin/summary/`, {
-    headers: { Authorization: `Bearer ${access}` },
+  const res = await fetch(`${API_BASE}/admin/summary/`, {
+    headers: authHeaders(access),
   });
 
-  if (!res.ok) throw new Error(`Falha ao carregar admin summary: ${res.status} ${await parseError(res)}`);
-  return await res.json();
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar admin summary: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as AdminSummary;
 }

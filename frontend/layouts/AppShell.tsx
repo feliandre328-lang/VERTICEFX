@@ -66,6 +66,7 @@ export default function AppShell() {
     if (mainContentRef.current) {
       mainContentRef.current.scrollTo({ top: 0, behavior: "smooth" });
     }
+    setIsMobileMenuOpen(false);
   }, [loc.pathname]);
 
   // --- Handlers (iguais do App.tsx antigo) ---
@@ -123,6 +124,8 @@ export default function AppShell() {
     <div className="min-h-screen bg-slate-950 text-slate-300 flex font-sans">
       <Sidebar
         role={role as UserRole}
+        isMobileOpen={isMobileMenuOpen}
+        onMobileClose={() => setIsMobileMenuOpen(false)}
         onLogout={() => {
           handleLogout();
           nav("/login", { replace: true });
@@ -135,6 +138,7 @@ export default function AppShell() {
           <div className="flex items-center gap-4">
             <button
               className="md:hidden p-2 -ml-2 text-slate-400 hover:text-white"
+              aria-label="Abrir menu"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             >
               <Menu />

@@ -13,12 +13,17 @@ import {
   BarChart3,
   AlertCircle,
   UserCheck,
+  X,
 } from "lucide-react";
 import { UserRole } from "../types";
 
 interface SidebarProps {
   role: UserRole;
   onLogout: () => void | Promise<void>;
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
+  activePage?: string;
+  onNavigate?: (page: string) => void;
 }
 
 type MenuItem = {
@@ -42,14 +47,11 @@ const adminItems: MenuItem[] = [
   { label: "Aprovações Pendentes", icon: AlertCircle, to: "/app/admin/withdrawals" },
   { label: "Performance Diária", icon: BarChart3, to: "/app/admin/performance" },
   { label: "Compliance (KYC)", icon: UserCheck, to: "/app/admin/compliance" },
-
-  // ✅ Recomendo unificar:
   { label: "Log de Transações", icon: FileText, to: "/app/transactions" },
-
   { label: "Configurações", icon: Settings, to: "/app/admin/settings" },
 ];
 
-export default function Sidebar({ role, onLogout }: SidebarProps) {
+export default function Sidebar({ role, onLogout, isMobileOpen = false, onMobileClose }: SidebarProps) {
   const navigate = useNavigate();
   const menuItems = role === "ADMIN" ? adminItems : clientItems;
 
@@ -62,12 +64,13 @@ export default function Sidebar({ role, onLogout }: SidebarProps) {
     try {
       await onLogout();
     } finally {
+      onMobileClose?.();
       navigate("/login", { replace: true });
     }
   };
 
-  return (
-    <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-20 hidden md:flex">
+  const sidebarInner = (
+    <>
       <div className="p-6 border-b border-slate-800">
         <div className="flex flex-col items-center justify-center text-center">
           <div className="mb-3 relative w-12 h-12">
@@ -103,6 +106,7 @@ export default function Sidebar({ role, onLogout }: SidebarProps) {
               to={item.to}
               className={({ isActive }) => `${baseClass} ${isActive ? activeClass : inactiveClass}`}
               end
+              onClick={onMobileClose}
             >
               <Icon size={18} />
               <span>{item.label}</span>
@@ -120,6 +124,34 @@ export default function Sidebar({ role, onLogout }: SidebarProps) {
           <span>Encerrar Sessão</span>
         </button>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 border-r border-slate-800 hidden md:flex md:flex-col z-20">
+        {sidebarInner}
+      </aside>
+
+      {isMobileOpen && (
+        <div className="md:hidden fixed inset-0 z-40">
+          <button
+            type="button"
+            aria-label="Fechar menu"
+            className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
+            onClick={onMobileClose}
+          />
+          <aside className="relative h-full w-72 max-w-[85vw] bg-slate-900 border-r border-slate-800 flex flex-col z-50">
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-white">Menu</h2>
+              <button type="button" aria-label="Fechar" onClick={onMobileClose} className="p-2 text-slate-400 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+            {sidebarInner}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
