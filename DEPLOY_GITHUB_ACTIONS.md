@@ -17,6 +17,10 @@ No GitHub:
 2. `Pages`
 3. Em `Source`, selecione `GitHub Actions`
 
+Observacao:
+- O workflow ja tenta habilitar Pages automaticamente (`enablement: true`).
+- Se o token nao tiver permissao de administracao do repositorio, voce ainda precisara fazer essa ativacao manual uma vez.
+
 ## 2) Configurar Secrets do repositório
 
 No GitHub:
