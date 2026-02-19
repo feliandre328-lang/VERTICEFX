@@ -183,6 +183,9 @@ export default function DashboardRoute() {
         onNavigate={(p) => navigate(`/app/${p}`)}
         onReinvest={handleReinvest}
         onOpenPix={handleOpenPix}
+        amountInput={amountInput}
+        setAmountInput={handleAmountChange}
+        loadingPix={saving}
       />
 
       <PixModal
