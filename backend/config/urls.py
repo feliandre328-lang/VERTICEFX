@@ -18,6 +18,11 @@ from withdrawals.views import (
     ResultLedgerAdminViewSet,
     WithdrawalSummaryView,
 )
+from referrals.views import (
+    AdminReferralInviteViewSet,
+    ClientReferralInviteViewSet,
+    ReferralSummaryView,
+)
 
 from portfolio.auth_views import MeView
 
@@ -29,6 +34,8 @@ router.register("performance-distributions", ClientDailyPerformanceDistributionV
 router.register("admin/withdrawals", AdminWithdrawalViewSet, basename="admin-withdrawals")
 router.register("admin/result-ledger", ResultLedgerAdminViewSet, basename="admin-result-ledger")
 router.register("admin/performance-distributions", DailyPerformanceDistributionAdminViewSet, basename="admin-performance-distributions")
+router.register("referrals/invites", ClientReferralInviteViewSet, basename="referral-invites")
+router.register("admin/referrals/invites", AdminReferralInviteViewSet, basename="admin-referral-invites")
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -45,6 +52,7 @@ urlpatterns = [
     path("api/dashboard/summary/", DashboardSummaryView.as_view()),
     path("api/admin/summary/", AdminSummaryView.as_view()),
     path("api/withdrawals/summary/", WithdrawalSummaryView.as_view()),
+    path("api/referrals/summary/", ReferralSummaryView.as_view()),
 
 
     # API

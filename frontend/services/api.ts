@@ -331,6 +331,80 @@ export async function listDailyPerformanceDistributions(access: string): Promise
   return (json ?? []) as DailyPerformanceDistribution[];
 }
 
+// -------------------- REFERRALS -------------------- //
+
+export type ReferralTier = {
+  name: string;
+  min_credits_cents: number;
+  min_active: number;
+  fee_discount: string;
+  bonus_report: string;
+};
+
+export type ReferralSummary = {
+  referral_code: string;
+  active_referrals_count: number;
+  pending_referrals_count: number;
+  total_credits_cents: number;
+  current_tier: ReferralTier;
+  next_tier: ReferralTier | null;
+  credits_to_next_cents: number;
+  active_to_next: number;
+};
+
+export type ReferralInvite = {
+  id: number;
+  referred_user: number | null;
+  referred_username: string;
+  referred_name: string;
+  referred_email: string;
+  status: "PENDING" | "ACTIVE" | string;
+  credits_cents: number;
+  joined_date: string;
+  activated_at: string | null;
+};
+
+export async function getReferralSummary(access: string): Promise<ReferralSummary> {
+  const res = await fetch(`${API_BASE}/referrals/summary/`, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar resumo de indicacoes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as ReferralSummary;
+}
+
+export async function listReferralInvites(access: string): Promise<ReferralInvite[]> {
+  const res = await fetch(`${API_BASE}/referrals/invites/`, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar indicacoes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return (json ?? []) as ReferralInvite[];
+}
+
+export async function createReferralInvite(
+  access: string,
+  data: { referred_name?: string; referred_email?: string }
+): Promise<ReferralInvite> {
+  const res = await fetch(`${API_BASE}/referrals/invites/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify(data),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao criar indicacao: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as ReferralInvite;
+}
+
 // -------------------- ADMIN -------------------- //
 
 export type AdminInvestmentItem = {
