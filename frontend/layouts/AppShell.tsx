@@ -42,7 +42,7 @@ export default function AppShell() {
   const loc = useLocation();
   const mainContentRef = useRef<HTMLDivElement>(null);
 
-  const { role, logout, getAccessToken } = useAuth();
+  const { role, logout, getAccessToken, user: authUser } = useAuth();
 
   // ✅ VOLTANDO O "CORAÇÃO" DO APP ANTIGO: systemState aqui
   const [systemState, setSystemState] = useState<SystemState>(() => FinanceService.getSystemState());
@@ -234,6 +234,14 @@ export default function AppShell() {
     .replaceAll("-", " ")
     .replaceAll("/", " / ");
 
+  const greeting = (() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Bom dia";
+    if (hour < 18) return "Boa tarde";
+    return "Boa noite";
+  })();
+  const greetingName = authUser?.username || (role === "ADMIN" ? "Administrador" : "Cliente");
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-300 flex font-sans">
       <Sidebar
@@ -260,6 +268,9 @@ export default function AppShell() {
 
             <div className="hidden sm:block">
               <h2 className="text-sm font-semibold text-white capitalize tracking-wide">{title || "dashboard"}</h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {greeting}, <span className="text-slate-300">{greetingName}</span>
+              </p>
             </div>
 
             <div className="sm:hidden">
