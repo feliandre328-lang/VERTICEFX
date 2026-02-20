@@ -20,50 +20,47 @@ type LocalPixPayload = {
 function createLocalTxid() {
   const timePart = Date.now().toString(36).toUpperCase();
   const randomPart = Math.random().toString(36).slice(2, 10).toUpperCase();
-  // Limite recomendado do txid no BR Code: ate 25 chars
   return `VFX${timePart}${randomPart}`.slice(0, 25);
 }
 
 export default function DashboardRoute() {
   const navigate = useNavigate();
-
-  // state original do app (mantém TUDO como antes)
   const [systemState, setSystemState] = useState<SystemState>(() => FinanceService.getSystemState());
-
-  // ✅ token JWT
   const access = useMemo(() => localStorage.getItem("access") || "", []);
-
-  // PIX modal
   const [isPixOpen, setIsPixOpen] = useState(false);
-
-  // valor do aporte (dinâmico)
   const [amountInput, setAmountInput] = useState<string>("300,00");
   const [amountNumber, setAmountNumber] = useState<number>(MIN_PIX_AMOUNT);
-
-  // request state
   const [saving, setSaving] = useState(false);
-
-  // pix payload local (sem Mercado Pago)
   const [pix, setPix] = useState<LocalPixPayload | null>(null);
 
-  // ✅ carrega o patrimônio real do banco e injeta em state.balanceCapital
+  const refreshDashboardSummary = async () => {
+    if (!access) return;
+    try {
+      const sum = await getDashboardSummary(access);
+      const balanceCapital = (sum.balance_capital_cents || 0) / 100;
+      setSystemState((prev) => ({
+        ...prev,
+        balanceCapital,
+        totalContributed: balanceCapital,
+      }));
+    } catch (e) {
+      console.warn("Resumo do dashboard falhou:", e);
+    }
+  };
+
   useEffect(() => {
     if (!access) return;
+    refreshDashboardSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access]);
 
-    (async () => {
-      try {
-        const sum = await getDashboardSummary(access);
-        const balanceCapital = (sum.balance_capital_cents || 0) / 100;
-
-        setSystemState((prev) => ({
-          ...prev,
-          balanceCapital,
-          totalContributed: balanceCapital, // opcional: alinhar card
-        }));
-      } catch (e) {
-        console.warn("Resumo do dashboard falhou:", e);
-      }
-    })();
+  useEffect(() => {
+    const onNotif = () => {
+      refreshDashboardSummary();
+    };
+    window.addEventListener("vfx:notifications:new", onNotif);
+    return () => window.removeEventListener("vfx:notifications:new", onNotif);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access]);
 
   const handleReinvest = () => {
@@ -76,67 +73,51 @@ export default function DashboardRoute() {
     }
   };
 
-  // helpers
   const parseBRL = (value: string) => {
-    const s = (value || "")
-      .trim()
-      .replace(/\s/g, "")
-      .replace("R$", "")
-      .replace(/\./g, "")
-      .replace(",", ".");
+    const s = (value || "").trim().replace(/\s/g, "").replace("R$", "").replace(/\./g, "").replace(",", ".");
     const n = Number(s);
     return Number.isFinite(n) ? n : NaN;
   };
 
-  const formatBRL = (n: number) => {
-    return new Intl.NumberFormat("pt-BR", {
+  const formatBRL = (n: number) =>
+    new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
     }).format(n);
-  };
 
-  // ✅ abre modal (NÃO gera pix automaticamente — igual Nubank)
   const handleOpenPix = () => {
     if (!access) {
-      alert("Sessão expirada. Faça login novamente.");
+      alert("Sessao expirada. Faca login novamente.");
       navigate("/login", { replace: true });
       return;
     }
-
-    // reseta estado do pix para forçar gerar de novo ao clicar no botão do modal
     setPix(null);
     setIsPixOpen(true);
   };
 
-  // ✅ valida e atualiza amountNumber quando digita
   const handleAmountChange = (next: string) => {
     setAmountInput(next);
-
     const n = parseBRL(next);
     if (!Number.isFinite(n)) return;
-
     setAmountNumber(n);
   };
 
-  // ✅ botao dentro do modal: gera Pix local (copia e cola + QR)
   const handleGeneratePix = async () => {
     if (!access) {
-      alert("Sessão expirada. Faça login novamente.");
+      alert("Sessao expirada. Faca login novamente.");
       navigate("/login", { replace: true });
       return;
     }
 
     const n = amountNumber;
-
     if (!Number.isFinite(n) || n < MIN_PIX_AMOUNT) {
-      alert(`O valor mínimo para aporte é ${formatBRL(MIN_PIX_AMOUNT)}.`);
+      alert(`O valor minimo para aporte e ${formatBRL(MIN_PIX_AMOUNT)}.`);
       return;
     }
 
     try {
       const txid = createLocalTxid();
       const pixCode = generatePIXCode(n, txid);
-
       setPix({
         pix_code: pixCode,
         external_ref: txid,
@@ -146,15 +127,12 @@ export default function DashboardRoute() {
     }
   };
 
-  // ✅ “Já paguei” -> cria investimento PENDING no Django
   const handleConfirmPaid = async (refFromInput?: string) => {
     if (!access) {
-      alert("Sessão expirada. Faça login novamente.");
+      alert("Sessao expirada. Faca login novamente.");
       navigate("/login", { replace: true });
       return;
     }
-
-    // precisa ter gerado pix antes, porque o fluxo é "Nubank"
     if (!pix?.external_ref) {
       alert("Gere o Pix antes de confirmar o pagamento.");
       return;
@@ -162,26 +140,13 @@ export default function DashboardRoute() {
 
     try {
       setSaving(true);
-
       await createInvestment(access, {
         amount: amountNumber,
         paid_at: new Date().toISOString(),
         external_ref: refFromInput || pix.external_ref,
       });
-
       setIsPixOpen(false);
-
-      // atualiza summary
-      try {
-        const sum = await getDashboardSummary(access);
-        const balanceCapital = (sum.balance_capital_cents || 0) / 100;
-        setSystemState((prev) => ({
-          ...prev,
-          balanceCapital,
-          totalContributed: balanceCapital,
-        }));
-      } catch {}
-
+      await refreshDashboardSummary();
       navigate("/app/investments", { replace: true });
     } catch (err: any) {
       alert(err?.message ?? "Erro ao registrar aporte.");

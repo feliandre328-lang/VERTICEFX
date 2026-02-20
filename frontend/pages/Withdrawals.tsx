@@ -80,6 +80,16 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state }) => {
   }, [access, type, scheduledDate]);
 
   useEffect(() => {
+    const onNotif = () => {
+      const refDate = type === "CAPITAL" ? scheduledDate || undefined : undefined;
+      loadWithdrawalData(refDate);
+    };
+    window.addEventListener("vfx:notifications:new", onNotif);
+    return () => window.removeEventListener("vfx:notifications:new", onNotif);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access, type, scheduledDate]);
+
+  useEffect(() => {
     if (type === "CAPITAL") {
       setScheduledDate(summary?.capital_cutoff_date ?? "");
       return;

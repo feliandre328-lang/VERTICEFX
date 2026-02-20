@@ -34,39 +34,45 @@ const Dashboard: React.FC<DashboardProps> = ({
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
-  useEffect(() => {
+  const loadRecentInvestments = async () => {
     if (!access) return;
+    try {
+      setLoadingRecentInvestments(true);
+      setRecentInvestmentsError("");
 
-    const loadRecentInvestments = async () => {
-      try {
-        setLoadingRecentInvestments(true);
-        setRecentInvestmentsError("");
+      const data = await listInvestments(access);
+      const filtered = (data as any[]).filter((item) => {
+        if (!user?.id) return true;
+        if (item.user_id === undefined || item.user_id === null) return true;
+        return Number(item.user_id) === Number(user.id);
+      }) as InvestmentItem[];
 
-        const data = await listInvestments(access);
+      const sorted = [...filtered].sort((a, b) => {
+        const dateDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        if (dateDiff !== 0) return dateDiff;
+        return Number(b.id) - Number(a.id);
+      });
 
-        // O endpoint autenticado /investments/ ja retorna somente o usuario logado.
-        // Se user_id vier no payload, filtramos defensivamente.
-        const filtered = (data as any[]).filter((item) => {
-          if (!user?.id) return true;
-          if (item.user_id === undefined || item.user_id === null) return true;
-          return Number(item.user_id) === Number(user.id);
-        }) as InvestmentItem[];
+      setRecentInvestments(sorted.slice(0, 5));
+    } catch (e: any) {
+      setRecentInvestmentsError(e?.message ?? "Falha ao carregar aportes recentes.");
+    } finally {
+      setLoadingRecentInvestments(false);
+    }
+  };
 
-        const sorted = [...filtered].sort((a, b) => {
-          const dateDiff = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-          if (dateDiff !== 0) return dateDiff;
-          return Number(b.id) - Number(a.id);
-        });
-
-        setRecentInvestments(sorted.slice(0, 5));
-      } catch (e: any) {
-        setRecentInvestmentsError(e?.message ?? "Falha ao carregar aportes recentes.");
-      } finally {
-        setLoadingRecentInvestments(false);
-      }
-    };
-
+  useEffect(() => {
     loadRecentInvestments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access, user?.id]);
+
+  useEffect(() => {
+    const onNotif = () => {
+      loadRecentInvestments();
+    };
+    window.addEventListener("vfx:notifications:new", onNotif);
+    return () => window.removeEventListener("vfx:notifications:new", onNotif);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access, user?.id]);
 
   const getStatusBadge = (status: InvestmentItem["status"]) => (

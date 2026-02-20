@@ -219,6 +219,31 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
     loadStatementData();
   }, [access]);
 
+  useEffect(() => {
+    if (!access) return;
+    const onNotif = async () => {
+      try {
+        setLoadingData(true);
+        setDataError("");
+        const [investmentData, withdrawalData, distributionData] = await Promise.all([
+          listInvestments(access),
+          listWithdrawals(access),
+          listDailyPerformanceDistributions(access),
+        ]);
+        setInvestments(investmentData ?? []);
+        setWithdrawals(withdrawalData ?? []);
+        setDistributions(distributionData ?? []);
+      } catch (e: any) {
+        setDataError(e?.message ?? "Falha ao carregar extrato.");
+      } finally {
+        setLoadingData(false);
+      }
+    };
+
+    window.addEventListener("vfx:notifications:new", onNotif);
+    return () => window.removeEventListener("vfx:notifications:new", onNotif);
+  }, [access]);
+
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 

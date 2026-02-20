@@ -120,6 +120,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access]);
 
+  useEffect(() => {
+    const onNotif = () => {
+      refreshAdminSummary();
+      refreshAdminList();
+    };
+    window.addEventListener("vfx:notifications:new", onNotif);
+    return () => window.removeEventListener("vfx:notifications:new", onNotif);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access]);
+
   // Animate Forex Exposure (mantém igual)
   useEffect(() => {
     const interval = setInterval(() => {

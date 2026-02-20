@@ -132,6 +132,7 @@ export default function AppShell() {
 
       if (hasLoadedNotificationsRef.current && count > prevUnreadRef.current) {
         playNotificationBeep();
+        window.dispatchEvent(new CustomEvent("vfx:notifications:new", { detail: { unread_count: count } }));
       }
       prevUnreadRef.current = count;
       hasLoadedNotificationsRef.current = true;

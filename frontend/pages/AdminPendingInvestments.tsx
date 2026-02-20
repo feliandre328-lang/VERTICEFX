@@ -51,6 +51,15 @@ export default function AdminPendingInvestments() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const onNotif = () => {
+      refresh();
+    };
+    window.addEventListener("vfx:notifications:new", onNotif);
+    return () => window.removeEventListener("vfx:notifications:new", onNotif);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access]);
+
   const onApproveInvestment = async (id: number | string) => {
     if (!confirm("Aprovar este aporte?")) return;
     try {

@@ -55,6 +55,28 @@ const Yields: React.FC<YieldsProps> = ({ onReinvest }) => {
     load();
   }, [access]);
 
+  useEffect(() => {
+    if (!access) return;
+    const onNotif = async () => {
+      try {
+        setLoading(true);
+        setErrorMsg("");
+        const [summary, dist] = await Promise.all([
+          getWithdrawalSummary(access),
+          listDailyPerformanceDistributions(access),
+        ]);
+        setAvailableResultCents(summary.available_result_cents ?? 0);
+        setRows(dist ?? []);
+      } catch (e: any) {
+        setErrorMsg(e?.message ?? "Falha ao carregar relatorio de performance.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    window.addEventListener("vfx:notifications:new", onNotif);
+    return () => window.removeEventListener("vfx:notifications:new", onNotif);
+  }, [access]);
+
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
