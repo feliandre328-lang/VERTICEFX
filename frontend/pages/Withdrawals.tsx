@@ -47,14 +47,16 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state }) => {
   const [summary, setSummary] = useState<WithdrawalSummary | null>(null);
   const [items, setItems] = useState<WithdrawalItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
-  async function loadWithdrawalData(referenceDate?: string) {
+  async function loadWithdrawalData(referenceDate?: string, options?: { silent?: boolean }) {
     if (!access) return;
-    setLoading(true);
+    const silent = !!options?.silent;
+    if (!silent) setLoading(true);
     setErrorMsg("");
     try {
       const [summaryData, withdrawalsData] = await Promise.all([
@@ -69,20 +71,21 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state }) => {
     } catch (err: any) {
       setErrorMsg(err?.message ?? "Falha ao carregar dados de resgate.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
+      if (!initialized) setInitialized(true);
     }
   }
 
   useEffect(() => {
     const refDate = type === "CAPITAL" ? scheduledDate || undefined : undefined;
-    loadWithdrawalData(refDate);
+    loadWithdrawalData(refDate, { silent: initialized });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [access, type, scheduledDate]);
+  }, [access, type, scheduledDate, initialized]);
 
   useEffect(() => {
     const onNotif = () => {
       const refDate = type === "CAPITAL" ? scheduledDate || undefined : undefined;
-      loadWithdrawalData(refDate);
+      loadWithdrawalData(refDate, { silent: true });
     };
     window.addEventListener("vfx:notifications:new", onNotif);
     return () => window.removeEventListener("vfx:notifications:new", onNotif);
@@ -130,7 +133,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state }) => {
         scheduled_for: type === "CAPITAL" ? scheduledDate : undefined,
       });
       setAmount("");
-      await loadWithdrawalData();
+      await loadWithdrawalData(undefined, { silent: true });
     } catch (err: any) {
       setErrorMsg(err?.message ?? "Falha ao solicitar resgate.");
     } finally {
