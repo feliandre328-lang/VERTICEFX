@@ -8,6 +8,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import DailyPerformanceDistribution, ResultLedgerEntry, WithdrawalRequest
+from notifications.models import Notification
+from notifications.services import create_notification, notify_admins
 from .serializers import (
     AdminPayWithdrawalSerializer,
     AdminRejectWithdrawalSerializer,
@@ -41,6 +43,17 @@ class ClientWithdrawalViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, vi
 
     def get_queryset(self):
         return WithdrawalRequest.objects.filter(user=self.request.user).order_by("-requested_at")
+
+    def perform_create(self, serializer):
+        obj = serializer.save()
+        amount = obj.amount_cents / 100
+        notify_admins(
+            category=Notification.CATEGORY_WITHDRAWAL,
+            title="Nova solicitacao de resgate",
+            message=f"{obj.user.username} solicitou {obj.withdrawal_type} de R$ {amount:.2f}.",
+            payload={"withdrawal_id": obj.id, "user_id": obj.user_id, "status": obj.status},
+            exclude_user_id=obj.user_id if obj.user.is_staff else None,
+        )
 
 
 class AdminWithdrawalViewSet(viewsets.ReadOnlyModelViewSet):
@@ -76,6 +89,14 @@ class AdminWithdrawalViewSet(viewsets.ReadOnlyModelViewSet):
         obj.processed_by = request.user
         obj.rejection_reason = ""
         obj.save(update_fields=["status", "approved_at", "processed_by", "rejection_reason"])
+        amount = obj.amount_cents / 100
+        create_notification(
+            user=obj.user,
+            category=Notification.CATEGORY_WITHDRAWAL,
+            title="Solicitacao aprovada",
+            message=f"Sua solicitacao de R$ {amount:.2f} foi aprovada.",
+            payload={"withdrawal_id": obj.id, "status": obj.status},
+        )
         return Response(self.get_serializer(obj).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
@@ -95,6 +116,14 @@ class AdminWithdrawalViewSet(viewsets.ReadOnlyModelViewSet):
         obj.rejection_reason = in_ser.validated_data["rejection_reason"]
         obj.admin_note = in_ser.validated_data.get("admin_note", obj.admin_note)
         obj.save(update_fields=["status", "processed_by", "rejection_reason", "admin_note"])
+        amount = obj.amount_cents / 100
+        create_notification(
+            user=obj.user,
+            category=Notification.CATEGORY_WITHDRAWAL,
+            title="Solicitacao rejeitada",
+            message=f"Sua solicitacao de R$ {amount:.2f} foi rejeitada.",
+            payload={"withdrawal_id": obj.id, "status": obj.status, "rejection_reason": obj.rejection_reason},
+        )
         return Response(self.get_serializer(obj).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
@@ -117,6 +146,14 @@ class AdminWithdrawalViewSet(viewsets.ReadOnlyModelViewSet):
         if "admin_note" in in_ser.validated_data:
             obj.admin_note = in_ser.validated_data["admin_note"] or obj.admin_note
         obj.save(update_fields=["status", "paid_at", "processed_by", "external_ref", "admin_note"])
+        amount = obj.amount_cents / 100
+        create_notification(
+            user=obj.user,
+            category=Notification.CATEGORY_WITHDRAWAL,
+            title="Solicitacao paga",
+            message=f"Sua solicitacao de R$ {amount:.2f} foi paga.",
+            payload={"withdrawal_id": obj.id, "status": obj.status, "paid_at": obj.paid_at.isoformat() if obj.paid_at else None},
+        )
         return Response(self.get_serializer(obj).data, status=status.HTTP_200_OK)
 
 

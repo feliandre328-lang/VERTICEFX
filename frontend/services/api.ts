@@ -493,6 +493,69 @@ export async function getAdminSummary(access: string): Promise<AdminSummary> {
   return json as AdminSummary;
 }
 
+// -------------------- NOTIFICATIONS -------------------- //
+
+export type NotificationItem = {
+  id: number;
+  category: "SYSTEM" | "INVESTMENT" | "WITHDRAWAL" | "PERFORMANCE" | string;
+  title: string;
+  message: string;
+  payload: Record<string, any>;
+  is_read: boolean;
+  created_at: string;
+};
+
+export async function listNotifications(
+  access: string,
+  params?: { unread_only?: boolean; limit?: number }
+): Promise<NotificationItem[]> {
+  const url = withQuery(`${API_BASE}/notifications/`, {
+    unread_only: params?.unread_only ? 1 : undefined,
+    limit: params?.limit,
+  });
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar notificacoes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return (json ?? []) as NotificationItem[];
+}
+
+export async function getNotificationsUnreadCount(access: string): Promise<number> {
+  const res = await fetch(`${API_BASE}/notifications/unread-count/`, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar contador de notificacoes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return Number(json?.unread_count || 0);
+}
+
+export async function markNotificationRead(access: string, id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/notifications/${id}/mark-read/`, {
+    method: "POST",
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao marcar notificacao: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+}
+
+export async function markAllNotificationsRead(access: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/notifications/mark-all-read/`, {
+    method: "POST",
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao marcar todas notificacoes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+}
+
 export type AdminWithdrawalItem = {
   id: number;
   user: number;

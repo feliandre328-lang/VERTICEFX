@@ -23,6 +23,7 @@ from referrals.views import (
     ClientReferralInviteViewSet,
     ReferralSummaryView,
 )
+from notifications.views import NotificationViewSet
 
 from portfolio.auth_views import MeView
 
@@ -36,6 +37,7 @@ router.register("admin/result-ledger", ResultLedgerAdminViewSet, basename="admin
 router.register("admin/performance-distributions", DailyPerformanceDistributionAdminViewSet, basename="admin-performance-distributions")
 router.register("referrals/invites", ClientReferralInviteViewSet, basename="referral-invites")
 router.register("admin/referrals/invites", AdminReferralInviteViewSet, basename="admin-referral-invites")
+router.register("notifications", NotificationViewSet, basename="notifications")
 
 urlpatterns = [
     path("admin/", admin.site.urls),

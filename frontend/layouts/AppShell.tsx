@@ -11,6 +11,13 @@ import * as FinanceService from "../services/financialService";
 import { SystemState, UserProfile, UserRole } from "../types";
 
 import { useAuth } from "./AuthContext";
+import {
+  getNotificationsUnreadCount,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type NotificationItem,
+} from "../services/api";
 
 // Pages
 import Dashboard from "../pages/Dashboard";
@@ -35,12 +42,17 @@ export default function AppShell() {
   const loc = useLocation();
   const mainContentRef = useRef<HTMLDivElement>(null);
 
-  const { role, handleLogout } = useAuth();
+  const { role, logout, getAccessToken } = useAuth();
 
   // ✅ VOLTANDO O "CORAÇÃO" DO APP ANTIGO: systemState aqui
   const [systemState, setSystemState] = useState<SystemState>(() => FinanceService.getSystemState());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isBellOpen, setIsBellOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
   // ✅ Mesmo mock user do seu App.tsx antigo
   const user: UserProfile = useMemo(
@@ -61,13 +73,58 @@ export default function AppShell() {
     setSystemState(FinanceService.getSystemState());
   }, []);
 
+  const loadNotifications = async () => {
+    if (!access) return;
+    try {
+      const [count, list] = await Promise.all([
+        getNotificationsUnreadCount(access),
+        listNotifications(access, { limit: 20 }),
+      ]);
+      setUnreadCount(count);
+      setNotifications(list);
+    } catch {
+      // nao bloqueia a tela principal por erro de notificacao
+    }
+  };
+
   // scroll top ao trocar rota
   useEffect(() => {
     if (mainContentRef.current) {
       mainContentRef.current.scrollTo({ top: 0, behavior: "smooth" });
     }
     setIsMobileMenuOpen(false);
+    setIsBellOpen(false);
   }, [loc.pathname]);
+
+  useEffect(() => {
+    loadNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access, role]);
+
+  useEffect(() => {
+    if (!access) return;
+    const timer = setInterval(() => {
+      loadNotifications();
+    }, 15000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access, role]);
+
+  const handleNotificationClick = async (id: number) => {
+    if (!access) return;
+    try {
+      await markNotificationRead(access, id);
+      await loadNotifications();
+    } catch {}
+  };
+
+  const handleMarkAllRead = async () => {
+    if (!access) return;
+    try {
+      await markAllNotificationsRead(access);
+      await loadNotifications();
+    } catch {}
+  };
 
   // --- Handlers (iguais do App.tsx antigo) ---
   const handleCreateInvestment = (amount: number) => {
@@ -127,7 +184,7 @@ export default function AppShell() {
         isMobileOpen={isMobileMenuOpen}
         onMobileClose={() => setIsMobileMenuOpen(false)}
         onLogout={() => {
-          handleLogout();
+          logout();
           nav("/login", { replace: true });
         }}
       />
@@ -176,12 +233,50 @@ export default function AppShell() {
               </div>
             )}
 
-            <button className="p-2 relative text-slate-400 hover:text-white transition-colors">
+            <button
+              className="p-2 relative text-slate-400 hover:text-white transition-colors"
+              onClick={() => setIsBellOpen((v) => !v)}
+            >
               <Bell size={18} />
-              {role === "ADMIN" && systemState.pendingApprovals > 0 && (
+              {unreadCount > 0 && (
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full"></span>
               )}
             </button>
+            {isBellOpen && (
+              <div className="absolute right-4 md:right-6 top-14 w-[360px] max-w-[calc(100vw-2rem)] z-30 rounded-lg border border-slate-800 bg-slate-900 shadow-2xl shadow-black/40">
+                <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-white">Notificações</p>
+                  <button
+                    onClick={handleMarkAllRead}
+                    className="text-xs text-slate-400 hover:text-slate-200"
+                    disabled={unreadCount === 0}
+                  >
+                    Marcar todas como lidas
+                  </button>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <p className="p-4 text-xs text-slate-500 text-center">Sem notificações.</p>
+                  ) : (
+                    notifications.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => handleNotificationClick(item.id)}
+                        className={`w-full text-left px-4 py-3 border-b border-slate-800/70 hover:bg-slate-800/40 ${
+                          item.is_read ? "" : "bg-slate-800/20"
+                        }`}
+                      >
+                        <p className="text-sm text-slate-200 font-medium">{item.title}</p>
+                        <p className="text-xs text-slate-400 mt-1">{item.message}</p>
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          {new Date(item.created_at).toLocaleString("pt-BR")}
+                        </p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </header>
 

@@ -17,6 +17,8 @@ from .serializers import (
 )
 
 from .mp_service import mp_create_pix_payment
+from notifications.models import Notification
+from notifications.services import create_notification, notify_admins
 
 
 class InvestmentViewSet(viewsets.ModelViewSet):
@@ -29,6 +31,17 @@ class InvestmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Investment.objects.filter(user=self.request.user).order_by("-created_at")
+
+    def perform_create(self, serializer):
+        inv = serializer.save()
+        amount = Decimal(inv.amount_cents) / Decimal("100")
+        notify_admins(
+            category=Notification.CATEGORY_INVESTMENT,
+            title="Novo aporte solicitado",
+            message=f"{inv.user.username} solicitou aporte de R$ {amount:.2f}.",
+            payload={"investment_id": inv.id, "user_id": inv.user_id, "status": inv.status},
+            exclude_user_id=inv.user_id if inv.user.is_staff else None,
+        )
 
 
 class AdminInvestmentViewSet(viewsets.ReadOnlyModelViewSet):
@@ -51,6 +64,14 @@ class AdminInvestmentViewSet(viewsets.ReadOnlyModelViewSet):
         inv = self.get_object()
         inv.status = Investment.STATUS_APPROVED
         inv.save(update_fields=["status"])
+        amount = Decimal(inv.amount_cents) / Decimal("100")
+        create_notification(
+            user=inv.user,
+            category=Notification.CATEGORY_INVESTMENT,
+            title="Aporte aprovado",
+            message=f"Seu aporte de R$ {amount:.2f} foi aprovado.",
+            payload={"investment_id": inv.id, "status": inv.status},
+        )
         return Response({"ok": True, "id": inv.id, "status": inv.status}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], permission_classes=[IsAdminUser])
@@ -58,6 +79,14 @@ class AdminInvestmentViewSet(viewsets.ReadOnlyModelViewSet):
         inv = self.get_object()
         inv.status = Investment.STATUS_REJECTED
         inv.save(update_fields=["status"])
+        amount = Decimal(inv.amount_cents) / Decimal("100")
+        create_notification(
+            user=inv.user,
+            category=Notification.CATEGORY_INVESTMENT,
+            title="Aporte rejeitado",
+            message=f"Seu aporte de R$ {amount:.2f} foi rejeitado.",
+            payload={"investment_id": inv.id, "status": inv.status},
+        )
         return Response({"ok": True, "id": inv.id, "status": inv.status}, status=status.HTTP_200_OK)
 
 

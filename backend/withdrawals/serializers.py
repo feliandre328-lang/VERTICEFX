@@ -10,6 +10,8 @@ from rest_framework import serializers
 from portfolio.models import Investment
 from .models import DailyPerformanceDistribution, ResultLedgerEntry, WithdrawalRequest
 from .services import get_user_withdrawal_balances
+from notifications.models import Notification
+from notifications.services import create_notification
 
 
 User = get_user_model()
@@ -281,6 +283,18 @@ class DailyPerformanceDistributionCreateSerializer(serializers.Serializer):
                     "amount_cents": result_cents,
                     "description": f"Distribuicao diaria de performance {ref_date.isoformat()}",
                     "created_by": request.user,
+                },
+            )
+            create_notification(
+                user=dist.user,
+                category=Notification.CATEGORY_PERFORMANCE,
+                title="Distribuicao diaria processada",
+                message=f"Resultado de R$ {Decimal(result_cents) / Decimal('100'):.2f} distribuido em {ref_date.isoformat()}.",
+                payload={
+                    "reference_date": ref_date.isoformat(),
+                    "performance_percent": str(perf),
+                    "result_cents": result_cents,
+                    "distribution_id": dist.id,
                 },
             )
             created.append(dist)

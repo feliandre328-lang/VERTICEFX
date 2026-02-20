@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "portfolio",
     "withdrawals",
     "referrals",
+    "notifications",
     
 ]
 
