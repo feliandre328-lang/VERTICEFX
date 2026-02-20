@@ -51,8 +51,40 @@ export default function AppShell() {
   const [isBellOpen, setIsBellOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const prevUnreadRef = useRef(0);
+  const hasLoadedNotificationsRef = useRef(false);
+  const canPlaySoundRef = useRef(false);
 
-  const access = useMemo(() => getAccessToken(), [getAccessToken]);
+  const playNotificationBeep = () => {
+    if (!canPlaySoundRef.current) return;
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    try {
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.value = 0.0001;
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      gain.gain.exponentialRampToValueAtTime(0.08, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+      osc.start(now);
+      osc.stop(now + 0.2);
+      osc.onended = () => {
+        ctx.close().catch(() => {});
+      };
+    } catch {
+      // sem audio suportado ou bloqueado
+    }
+  };
 
   // ✅ Mesmo mock user do seu App.tsx antigo
   const user: UserProfile = useMemo(
@@ -73,15 +105,36 @@ export default function AppShell() {
     setSystemState(FinanceService.getSystemState());
   }, []);
 
+  useEffect(() => {
+    const unlockAudio = () => {
+      canPlaySoundRef.current = true;
+    };
+
+    window.addEventListener("click", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+
+    return () => {
+      window.removeEventListener("click", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
+
   const loadNotifications = async () => {
-    if (!access) return;
+    const token = getAccessToken();
+    if (!token) return;
     try {
       const [count, list] = await Promise.all([
-        getNotificationsUnreadCount(access),
-        listNotifications(access, { limit: 20 }),
+        getNotificationsUnreadCount(token),
+        listNotifications(token, { limit: 20 }),
       ]);
       setUnreadCount(count);
       setNotifications(list);
+
+      if (hasLoadedNotificationsRef.current && count > prevUnreadRef.current) {
+        playNotificationBeep();
+      }
+      prevUnreadRef.current = count;
+      hasLoadedNotificationsRef.current = true;
     } catch {
       // nao bloqueia a tela principal por erro de notificacao
     }
@@ -99,29 +152,32 @@ export default function AppShell() {
   useEffect(() => {
     loadNotifications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [access, role]);
+  }, [role]);
 
   useEffect(() => {
-    if (!access) return;
+    const token = getAccessToken();
+    if (!token) return;
     const timer = setInterval(() => {
       loadNotifications();
-    }, 15000);
+    }, 5000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [access, role]);
+  }, [role]);
 
   const handleNotificationClick = async (id: number) => {
-    if (!access) return;
+    const token = getAccessToken();
+    if (!token) return;
     try {
-      await markNotificationRead(access, id);
+      await markNotificationRead(token, id);
       await loadNotifications();
     } catch {}
   };
 
   const handleMarkAllRead = async () => {
-    if (!access) return;
+    const token = getAccessToken();
+    if (!token) return;
     try {
-      await markAllNotificationsRead(access);
+      await markAllNotificationsRead(token);
       await loadNotifications();
     } catch {}
   };

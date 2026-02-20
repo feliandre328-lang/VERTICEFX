@@ -43,7 +43,7 @@ const clientItems: MenuItem[] = [
 
 const adminItems: MenuItem[] = [
   { label: "Mesa Operacional", icon: LayoutDashboard, to: "/app/admin/dashboard" },
-  { label: "Resgates e Liquidações", icon: Wallet, to: "/app/admin/withdrawals" },
+  { label: "Aprovações Pendentes", icon: Wallet, to: "/app/admin/withdrawals" },
   { label: "Performance Diária", icon: BarChart3, to: "/app/admin/performance" },
   { label: "Compliance (KYC)", icon: UserCheck, to: "/app/admin/compliance" },
   { label: "Log de Transações", icon: FileText, to: "/app/transactions" },
