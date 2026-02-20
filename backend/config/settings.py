@@ -29,9 +29,11 @@ SECRET_KEY = 'django-insecure-qj9%0*q2hyhfin#wz%h+*5*-v@q@(*trj=q6x+5r!%&%*5c&p+
 DEBUG = True
 
 ALLOWED_HOSTS = [
-	'3.134.106.62',
 	'localhost',
 	'127.0.0.1',
+    '18.218.219.161',
+    'verticefx.com.br',
+    'www.verticefx.com.br'
 ]
 
 
@@ -86,7 +88,8 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://3.134.106.62",
+    "https://verticefx.com.br",
+    "http://verticefx.com.br",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
