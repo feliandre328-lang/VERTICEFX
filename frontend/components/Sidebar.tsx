@@ -11,7 +11,6 @@ import {
   LogOut,
   Settings,
   BarChart3,
-  AlertCircle,
   UserCheck,
   X,
 } from "lucide-react";
@@ -44,7 +43,7 @@ const clientItems: MenuItem[] = [
 
 const adminItems: MenuItem[] = [
   { label: "Mesa Operacional", icon: LayoutDashboard, to: "/app/admin/dashboard" },
-  { label: "Aprovações Pendentes", icon: AlertCircle, to: "/app/admin/withdrawals" },
+  { label: "Resgates e Liquidações", icon: Wallet, to: "/app/admin/withdrawals" },
   { label: "Performance Diária", icon: BarChart3, to: "/app/admin/performance" },
   { label: "Compliance (KYC)", icon: UserCheck, to: "/app/admin/compliance" },
   { label: "Log de Transações", icon: FileText, to: "/app/transactions" },

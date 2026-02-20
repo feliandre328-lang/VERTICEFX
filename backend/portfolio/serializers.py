@@ -34,6 +34,7 @@ class InvestmentSerializer(serializers.ModelSerializer):
 
 
 class AdminInvestmentSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
     user_username = serializers.CharField(source="user.username", read_only=True)
     user_email = serializers.CharField(source="user.email", read_only=True)
 
@@ -41,6 +42,7 @@ class AdminInvestmentSerializer(serializers.ModelSerializer):
         model = Investment
         fields = [
             "id",
+            "user_id",
             "user_username",
             "user_email",
             "amount_cents",

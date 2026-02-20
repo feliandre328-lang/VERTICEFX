@@ -417,6 +417,8 @@ export type AdminInvestmentItem = {
 
   // do serializer admin (select_related user)
   user_id?: number;
+  user_username?: string;
+  user_email?: string;
   username?: string;
   email?: string;
 };
@@ -489,4 +491,67 @@ export async function getAdminSummary(access: string): Promise<AdminSummary> {
   }
 
   return json as AdminSummary;
+}
+
+export type AdminWithdrawalItem = {
+  id: number;
+  user: number;
+  username: string;
+  email: string;
+  withdrawal_type: "RESULT_SETTLEMENT" | "CAPITAL_REDEMPTION" | string;
+  amount_cents: number;
+  pix_key: string;
+  scheduled_for: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "PAID" | string;
+  rejection_reason: string;
+  admin_note: string;
+  external_ref: string | null;
+  requested_at: string;
+  approved_at: string | null;
+  paid_at: string | null;
+};
+
+export async function listAdminWithdrawals(access: string, status?: string): Promise<AdminWithdrawalItem[]> {
+  const url = withQuery(`${API_BASE}/admin/withdrawals/`, { status });
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar resgates admin: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return (json ?? []) as AdminWithdrawalItem[];
+}
+
+export async function approveAdminWithdrawal(access: string, id: number | string): Promise<AdminWithdrawalItem> {
+  const res = await fetch(`${API_BASE}/admin/withdrawals/${id}/approve/`, {
+    method: "POST",
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao aprovar resgate: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as AdminWithdrawalItem;
+}
+
+export async function rejectAdminWithdrawal(
+  access: string,
+  id: number | string,
+  rejection_reason: string,
+  admin_note?: string
+): Promise<AdminWithdrawalItem> {
+  const res = await fetch(`${API_BASE}/admin/withdrawals/${id}/reject/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify({ rejection_reason, admin_note }),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao rejeitar resgate: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as AdminWithdrawalItem;
 }

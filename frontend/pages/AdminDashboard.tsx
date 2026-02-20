@@ -24,6 +24,7 @@ import {
 
 type AdminInvestmentItem = {
   id: number;
+  user_id?: number;
   user_username?: string;
   user_email?: string;
   amount_cents: number;
@@ -54,6 +55,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
   const [performanceInput, setPerformanceInput] = useState<string>("0.50");
+  const [searchClient, setSearchClient] = useState("");
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [processingSelected, setProcessingSelected] = useState(false);
   const [forexExposure, setForexExposure] = useState(65.0);
 
   // ✅ Banco (admin)
@@ -148,6 +152,56 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
   };
 
+  const toggleSelectUser = (userId: number) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  };
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedUserIds((prev) => {
+      const allSelected =
+        filteredEligibleIds.length > 0 && filteredEligibleIds.every((id) => prev.includes(id));
+      if (allSelected) {
+        return prev.filter((id) => !filteredEligibleIds.includes(id));
+      }
+      const merged = new Set([...prev, ...filteredEligibleIds]);
+      return [...merged];
+    });
+  };
+
+  const handleDistributeSelected = async () => {
+    const percent = parseFloat(performanceInput);
+    if (!access || !Number.isFinite(percent)) {
+      alert("Percentual de performance invalido.");
+      return;
+    }
+    if (selectedUserIds.length === 0) {
+      alert("Selecione pelo menos 1 cliente.");
+      return;
+    }
+
+    try {
+      setProcessingSelected(true);
+      let totalRows = 0;
+
+      for (const userId of selectedUserIds) {
+        const rows = await createDailyPerformanceDistribution(access, {
+          performance_percent: percent,
+          user_id: userId,
+        });
+        totalRows += rows.length;
+      }
+
+      alert(`Distribuicao individual concluida para ${selectedUserIds.length} cliente(s). Registros: ${totalRows}.`);
+      setSelectedUserIds([]);
+    } catch (err: any) {
+      alert(err?.message ?? "Falha ao distribuir performance individual.");
+    } finally {
+      setProcessingSelected(false);
+    }
+  };
+
   // ✅ aprovar/rejeitar INVESTMENT REAL (banco)
   const handleApproveInvestment = async (id: number) => {
     if (!access) return;
@@ -176,6 +230,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const n = typeof v === "number" ? v : Number(v);
     return Number.isFinite(n) ? n : fallback;
   };
+
+  const eligibleClients = useMemo(() => {
+    const grouped = new Map<
+      number,
+      { user_id: number; username: string; email: string; approved_cents: number }
+    >();
+
+    for (const inv of adminItems) {
+      if (inv.status !== "APPROVED") continue;
+      if (!inv.user_id || inv.user_id <= 0) continue;
+
+      const current = grouped.get(inv.user_id) || {
+        user_id: inv.user_id,
+        username: inv.user_username || `user-${inv.user_id}`,
+        email: inv.user_email || "",
+        approved_cents: 0,
+      };
+      current.approved_cents += inv.amount_cents || 0;
+      grouped.set(inv.user_id, current);
+    }
+
+    return [...grouped.values()]
+      .filter((row) => row.approved_cents > 0)
+      .sort((a, b) => b.approved_cents - a.approved_cents);
+  }, [adminItems]);
+
+  const filteredEligibleClients = useMemo(() => {
+    const q = searchClient.trim().toLowerCase();
+    if (!q) return eligibleClients;
+    return eligibleClients.filter(
+      (u) => u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || String(u.user_id).includes(q)
+    );
+  }, [eligibleClients, searchClient]);
+
+  const filteredEligibleIds = useMemo(
+    () => filteredEligibleClients.map((u) => u.user_id),
+    [filteredEligibleClients]
+  );
 
   const StatsSection = () => {
     const tvl = safeNumber(adminSummary?.tvl_cents, 0) / 100;
@@ -225,7 +317,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     <div className="space-y-4">
       <h3 className="text-lg font-bold text-white flex items-center gap-2">
         <AlertCircle size={20} className="text-amber-500" />
-        {view === "admin-withdrawals" ? "Aprovações Pendentes" : "Investments (todas)"}
+        {view === "admin-withdrawals" ? "Resgates e Liquidações Pendentes" : "Investments (todas)"}
       </h3>
 
       {errMsg ? (
@@ -310,7 +402,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     </div>
   );
 
-  const PerformanceSection = () => (
+    const PerformanceSection = () => (
     <div className="space-y-4">
       <h3 className="text-lg font-bold text-white flex items-center gap-2">
         <Activity size={20} className="text-blue-500" />
@@ -319,13 +411,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
         <p className="text-sm text-slate-400 mb-6">
-          Defina a porcentagem de rendimento que será aplicada a todos os contratos ativos para o dia vigente.
+          Defina o percentual diario e distribua para todos os contratos ativos ou somente para clientes selecionados.
         </p>
 
         <form onSubmit={handlePerformanceSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-              Performance Diária (%)
+              Performance Diaria (%)
             </label>
             <div className="flex flex-col sm:flex-row gap-2">
               <input
@@ -356,7 +448,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <div className="bg-slate-950 p-4 rounded border border-slate-800">
             <p className="text-xs text-slate-500">
-              Data de Referência:{" "}
+              Data de Referencia:{" "}
               <span className="text-white font-mono">
                 {new Date(state.currentVirtualDate).toLocaleDateString()}
               </span>
@@ -367,9 +459,77 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             type="submit"
             className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-all shadow-lg shadow-blue-900/20"
           >
-            Processar e Distribuir
+            Distribuir para Todos Elegiveis
           </button>
         </form>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <h4 className="text-white font-semibold">Distribuicao Individual (Saldo &gt; 0)</h4>
+          <div className="text-xs text-slate-500">
+            Selecionados: <span className="text-slate-300 font-mono">{selectedUserIds.length}</span>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-[1fr_auto] gap-3">
+          <input
+            type="text"
+            value={searchClient}
+            onChange={(e) => setSearchClient(e.target.value)}
+            placeholder="Pesquisar por usuario, e-mail ou id..."
+            className="bg-slate-950 border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none focus:border-blue-900"
+          />
+          <button
+            type="button"
+            onClick={toggleSelectAllFiltered}
+            className="px-3 py-2 rounded-lg border border-slate-700 text-slate-200 hover:bg-slate-800 text-sm"
+          >
+            Marcar/Desmarcar filtrados
+          </button>
+        </div>
+
+        <div className="border border-slate-800 rounded-lg overflow-hidden">
+          <div className="max-h-72 overflow-y-auto divide-y divide-slate-800">
+            {filteredEligibleClients.length === 0 ? (
+              <div className="p-6 text-center text-sm text-slate-500">Nenhum cliente elegivel encontrado.</div>
+            ) : (
+              filteredEligibleClients.map((client) => (
+                <label
+                  key={client.user_id}
+                  className="flex items-center justify-between gap-3 p-3 bg-slate-950/30 hover:bg-slate-800/30 cursor-pointer"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={selectedUserIds.includes(client.user_id)}
+                      onChange={() => toggleSelectUser(client.user_id)}
+                      className="accent-blue-600"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm text-slate-200 truncate">{client.username}</p>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {client.email || "sem-email"} - id {client.user_id}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-xs font-mono text-emerald-400 shrink-0">
+                    {formatCurrency(moneyFromCents(client.approved_cents))}
+                  </p>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleDistributeSelected}
+          disabled={processingSelected || selectedUserIds.length === 0}
+          className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-lg transition-all"
+        >
+          {processingSelected ? "Processando..." : "Distribuir para Selecionados"}
+        </button>
       </div>
     </div>
   );
@@ -487,7 +647,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const AdminNavTabs = () => {
     const tabs = [
       { id: "admin-dashboard", label: "Geral", icon: Globe },
-      { id: "admin-withdrawals", label: "Investments", icon: AlertCircle },
+      { id: "admin-withdrawals", label: "Resgates", icon: AlertCircle },
       { id: "admin-performance", label: "Performance", icon: Activity },
       { id: "admin-compliance", label: "KYC", icon: UserCheck },
     ];
@@ -554,3 +714,4 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 };
 
 export default AdminDashboard;
+
