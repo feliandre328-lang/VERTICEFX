@@ -10,12 +10,23 @@ from portfolio.views import (
     DashboardSummaryView,
     AdminSummaryView,
 )
+from withdrawals.views import (
+    AdminWithdrawalViewSet,
+    ClientWithdrawalViewSet,
+    DailyPerformanceDistributionAdminViewSet,
+    ResultLedgerAdminViewSet,
+    WithdrawalSummaryView,
+)
 
 from portfolio.auth_views import MeView
 
 router = DefaultRouter()
 router.register("investments", InvestmentViewSet, basename="investment")
 router.register("admin/investments", AdminInvestmentViewSet, basename="admin-investments")
+router.register("withdrawals", ClientWithdrawalViewSet, basename="withdrawals")
+router.register("admin/withdrawals", AdminWithdrawalViewSet, basename="admin-withdrawals")
+router.register("admin/result-ledger", ResultLedgerAdminViewSet, basename="admin-result-ledger")
+router.register("admin/performance-distributions", DailyPerformanceDistributionAdminViewSet, basename="admin-performance-distributions")
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -31,6 +42,7 @@ urlpatterns = [
     # Summary
     path("api/dashboard/summary/", DashboardSummaryView.as_view()),
     path("api/admin/summary/", AdminSummaryView.as_view()),
+    path("api/withdrawals/summary/", WithdrawalSummaryView.as_view()),
 
 
     # API

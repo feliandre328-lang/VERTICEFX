@@ -206,6 +206,118 @@ export async function getMeSummary(access: string) {
   }>;
 }
 
+// -------------------- WITHDRAWALS -------------------- //
+
+export type WithdrawalSummary = {
+  available_capital_cents: number;
+  available_result_cents: number;
+  approved_capital_cents: number;
+  result_ledger_cents: number;
+  pending_capital_cents: number;
+  pending_result_cents: number;
+  capital_cutoff_date: string;
+};
+
+export type WithdrawalType = "RESULT_SETTLEMENT" | "CAPITAL_REDEMPTION";
+
+export type WithdrawalItem = {
+  id: number;
+  withdrawal_type: WithdrawalType;
+  amount_cents: number;
+  pix_key: string;
+  scheduled_for: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "PAID" | string;
+  rejection_reason: string;
+  admin_note: string;
+  external_ref: string | null;
+  requested_at: string;
+  approved_at: string | null;
+  paid_at: string | null;
+};
+
+export async function getWithdrawalSummary(access: string, scheduledFor?: string): Promise<WithdrawalSummary> {
+  const url = withQuery(`${API_BASE}/withdrawals/summary/`, { scheduled_for: scheduledFor });
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar saldo de resgates: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as WithdrawalSummary;
+}
+
+export async function listWithdrawals(access: string): Promise<WithdrawalItem[]> {
+  const res = await fetch(`${API_BASE}/withdrawals/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar resgates: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return (json ?? []) as WithdrawalItem[];
+}
+
+export async function createWithdrawal(
+  access: string,
+  data: {
+    withdrawal_type: WithdrawalType;
+    amount: number;
+    pix_key?: string;
+    scheduled_for?: string;
+  }
+): Promise<WithdrawalItem> {
+  const res = await fetch(`${API_BASE}/withdrawals/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify(data),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao criar resgate: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as WithdrawalItem;
+}
+
+export type DailyPerformanceDistribution = {
+  id: number;
+  user: number;
+  username: string;
+  reference_date: string;
+  performance_percent: string;
+  base_capital_cents: number;
+  result_cents: number;
+  note: string;
+  created_at: string;
+  created_by: number | null;
+  created_by_username: string;
+};
+
+export async function createDailyPerformanceDistribution(
+  access: string,
+  data: { reference_date?: string; performance_percent: number; user_id?: number; note?: string }
+): Promise<DailyPerformanceDistribution[]> {
+  const res = await fetch(`${API_BASE}/admin/performance-distributions/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify(data),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao distribuir performance: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return (json ?? []) as DailyPerformanceDistribution[];
+}
+
 // -------------------- ADMIN -------------------- //
 
 export type AdminInvestmentItem = {

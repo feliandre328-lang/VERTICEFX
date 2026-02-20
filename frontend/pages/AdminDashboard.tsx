@@ -15,6 +15,7 @@ import {
 import { SystemState } from "../types";
 import { useAuth } from "../layouts/AuthContext";
 import {
+  createDailyPerformanceDistribution,
   listAdminInvestments,
   approveInvestment,
   rejectInvestment,
@@ -131,8 +132,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handlePerformanceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSetPerformance(parseFloat(performanceInput));
-    alert("Performance diária aplicada e distribuída aos clientes.");
+    const percent = parseFloat(performanceInput);
+    if (!access || !Number.isFinite(percent)) {
+      alert("Percentual de performance invalido.");
+      return;
+    }
+
+    createDailyPerformanceDistribution(access, { performance_percent: percent })
+      .then((rows) => {
+        onSetPerformance(percent);
+        alert(`Performance diaria aplicada. Distribuicoes geradas: ${rows.length}.`);
+      })
+      .catch((err: any) => {
+        alert(err?.message ?? "Falha ao distribuir performance diaria.");
+      });
   };
 
   // ✅ aprovar/rejeitar INVESTMENT REAL (banco)
