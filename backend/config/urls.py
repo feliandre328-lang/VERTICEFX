@@ -12,6 +12,7 @@ from portfolio.views import (
 )
 from withdrawals.views import (
     AdminWithdrawalViewSet,
+    ClientDailyPerformanceDistributionViewSet,
     ClientWithdrawalViewSet,
     DailyPerformanceDistributionAdminViewSet,
     ResultLedgerAdminViewSet,
@@ -24,6 +25,7 @@ router = DefaultRouter()
 router.register("investments", InvestmentViewSet, basename="investment")
 router.register("admin/investments", AdminInvestmentViewSet, basename="admin-investments")
 router.register("withdrawals", ClientWithdrawalViewSet, basename="withdrawals")
+router.register("performance-distributions", ClientDailyPerformanceDistributionViewSet, basename="performance-distributions")
 router.register("admin/withdrawals", AdminWithdrawalViewSet, basename="admin-withdrawals")
 router.register("admin/result-ledger", ResultLedgerAdminViewSet, basename="admin-result-ledger")
 router.register("admin/performance-distributions", DailyPerformanceDistributionAdminViewSet, basename="admin-performance-distributions")

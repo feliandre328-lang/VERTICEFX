@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
-import { SystemState, Transaction } from "../types";
-import { InvestmentItem, listInvestments } from "../services/api";
+import { SystemState } from "../types";
+import {
+  DailyPerformanceDistribution,
+  InvestmentItem,
+  WithdrawalItem,
+  listDailyPerformanceDistributions,
+  listInvestments,
+  listWithdrawals,
+} from "../services/api";
 import { useAuth } from "../layouts/AuthContext";
 
 interface TransactionsProps {
@@ -11,7 +18,7 @@ interface TransactionsProps {
 type StatementRow = {
   id: string;
   date: string;
-  operation: "APORTE" | "RESGATE";
+  operation: "APORTE" | "RESGATE_CAPITAL" | "LIQUIDACAO_RESULTADO" | "DISTRIBUICAO";
   description: string;
   status: string;
   amount: number;
@@ -31,15 +38,12 @@ const toAscii = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^\x20-\x7E]/g, "");
 
-const escapePdfText = (value: string) =>
-  value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+const escapePdfText = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 
 function buildPdfBytes(pageStreams: string[]): Uint8Array {
   const objects: string[] = [];
-
   const fontObjectNumber = 3;
   const firstPageObject = 4;
-
   const pageObjectNumbers: number[] = [];
   const contentObjectNumbers: number[] = [];
 
@@ -49,7 +53,6 @@ function buildPdfBytes(pageStreams: string[]): Uint8Array {
   }
 
   const kidsRef = pageObjectNumbers.map((n) => `${n} 0 R`).join(" ");
-
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
   objects[2] = `<< /Type /Pages /Kids [${kidsRef}] /Count ${pageStreams.length} >>`;
   objects[fontObjectNumber] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
@@ -58,18 +61,17 @@ function buildPdfBytes(pageStreams: string[]): Uint8Array {
     const pageObj = pageObjectNumbers[i];
     const contentObj = contentObjectNumbers[i];
     const stream = pageStreams[i];
-
     objects[contentObj] = `<< /Length ${stream.length} >>
 stream
 ${stream}
 endstream`;
-
-    objects[pageObj] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 ${fontObjectNumber} 0 R >> >> /Contents ${contentObj} 0 R >>`;
+    objects[pageObj] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] ` +
+      `/Resources << /Font << /F1 ${fontObjectNumber} 0 R >> >> /Contents ${contentObj} 0 R >>`;
   }
 
   let pdf = "%PDF-1.4\n";
   const offsets: number[] = [];
-
   for (let i = 1; i < objects.length; i++) {
     if (!objects[i]) continue;
     offsets[i] = pdf.length;
@@ -78,12 +80,10 @@ endstream`;
 
   const xrefOffset = pdf.length;
   const size = objects.length;
-
   pdf += `xref
 0 ${size}
 0000000000 65535 f 
 `;
-
   for (let i = 1; i < size; i++) {
     const off = String(offsets[i] || 0).padStart(10, "0");
     pdf += `${off} 00000 n \n`;
@@ -123,47 +123,37 @@ function buildPageStream(params: {
   totalOut: number;
 }) {
   const { rows, pageIndex, pageCount, clientName, clientEmail, clientId, role, totalIn, totalOut } = params;
-
   const cmds: string[] = [];
 
   cmds.push("0.95 0.97 1 rg");
   cmds.push("40 752 515 70 re f");
-
-  // Logo vetorial inspirada na marca do sidebar (triangulo + barras)
   cmds.push("0.15 0.39 0.93 rg");
   cmds.push("64 812 m 82 772 l 46 772 l h f");
   cmds.push("0.06 0.72 0.51 rg");
   cmds.push("57 778 4 14 re f");
   cmds.push("64 778 4 24 re f");
   cmds.push("71 778 4 34 re f");
-
   cmds.push(textCmd(98, 797, 18, "VERTICE FX"));
   cmds.push(textCmd(98, 780, 10, "Extrato Financeiro"));
   cmds.push(textCmd(425, 780, 9, `Pagina ${pageIndex + 1}/${pageCount}`));
-
   cmds.push("0.86 0.89 0.94 RG 1 w");
   cmds.push("40 744 m 555 744 l S");
 
-  // Bloco cliente
   cmds.push("0.98 0.99 1 rg");
   cmds.push("40 676 515 56 re f");
   cmds.push("0.87 0.9 0.95 RG 1 w");
   cmds.push("40 676 515 56 re S");
-
   cmds.push(textCmd(50, 718, 9, `Cliente: ${clientName}`));
   cmds.push(textCmd(50, 704, 9, `Email: ${clientEmail}`));
   cmds.push(textCmd(50, 690, 9, `ID: ${clientId} | Perfil: ${role}`));
-
   cmds.push(textCmd(330, 718, 9, `Entradas: ${toAscii(formatPdfMoney(totalIn))}`));
   cmds.push(textCmd(330, 704, 9, `Saidas: ${toAscii(formatPdfMoney(totalOut))}`));
   cmds.push(textCmd(330, 690, 9, `Liquido: ${toAscii(formatPdfMoney(totalIn - totalOut))}`));
 
-  // Header tabela
   cmds.push("0.92 0.94 0.97 rg");
   cmds.push(`${TABLE_X} 648 ${TABLE_W} ${ROW_H} re f`);
   cmds.push("0.8 0.84 0.9 RG 1 w");
   cmds.push(`${TABLE_X} 648 ${TABLE_W} ${ROW_H} re S`);
-
   cmds.push(textCmd(52, 656, 9, "Data"));
   cmds.push(textCmd(128, 656, 9, "Operacao"));
   cmds.push(textCmd(208, 656, 9, "ID"));
@@ -173,7 +163,6 @@ function buildPageStream(params: {
   const tableStartY = 648 - ROW_H;
   rows.forEach((row, idx) => {
     const y = tableStartY - idx * ROW_H;
-
     if (idx % 2 === 0) {
       cmds.push("0.985 0.988 0.995 rg");
       cmds.push(`${TABLE_X} ${y} ${TABLE_W} ${ROW_H} re f`);
@@ -181,11 +170,9 @@ function buildPageStream(params: {
 
     cmds.push("0.9 0.92 0.95 RG 0.8 w");
     cmds.push(`${TABLE_X} ${y} ${TABLE_W} ${ROW_H} re S`);
-
     const valueLabel = `${row.direction === "OUT" ? "-" : "+"}${formatPdfMoney(row.amount)}`;
-
     cmds.push(textCmd(52, y + 8, 9, new Date(row.date).toLocaleDateString("pt-BR")));
-    cmds.push(textCmd(128, y + 8, 9, row.operation));
+    cmds.push(textCmd(128, y + 8, 9, safeCell(row.operation, 17)));
     cmds.push(textCmd(208, y + 8, 9, safeCell(row.id, 14)));
     cmds.push(textCmd(302, y + 8, 9, safeCell(row.status, 14)));
     cmds.push(textCmd(432, y + 8, 9, toAscii(valueLabel)));
@@ -197,31 +184,39 @@ function buildPageStream(params: {
   return cmds.join("\n");
 }
 
-const Transactions: React.FC<TransactionsProps> = ({ state }) => {
+const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
   const { getAccessToken, user, role } = useAuth();
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
   const [investments, setInvestments] = useState<InvestmentItem[]>([]);
-  const [loadingInvestments, setLoadingInvestments] = useState(false);
-  const [investmentsError, setInvestmentsError] = useState("");
+  const [withdrawals, setWithdrawals] = useState<WithdrawalItem[]>([]);
+  const [distributions, setDistributions] = useState<DailyPerformanceDistribution[]>([]);
+  const [loadingData, setLoadingData] = useState(false);
+  const [dataError, setDataError] = useState("");
 
   useEffect(() => {
     if (!access) return;
 
-    const loadInvestments = async () => {
+    const loadStatementData = async () => {
       try {
-        setLoadingInvestments(true);
-        setInvestmentsError("");
-        const data = await listInvestments(access);
-        setInvestments(data ?? []);
+        setLoadingData(true);
+        setDataError("");
+        const [investmentData, withdrawalData, distributionData] = await Promise.all([
+          listInvestments(access),
+          listWithdrawals(access),
+          listDailyPerformanceDistributions(access),
+        ]);
+        setInvestments(investmentData ?? []);
+        setWithdrawals(withdrawalData ?? []);
+        setDistributions(distributionData ?? []);
       } catch (e: any) {
-        setInvestmentsError(e?.message ?? "Falha ao carregar aportes.");
+        setDataError(e?.message ?? "Falha ao carregar extrato.");
       } finally {
-        setLoadingInvestments(false);
+        setLoadingData(false);
       }
     };
 
-    loadInvestments();
+    loadStatementData();
   }, [access]);
 
   const formatCurrency = (val: number) =>
@@ -234,12 +229,19 @@ const Transactions: React.FC<TransactionsProps> = ({ state }) => {
     return status;
   };
 
-  const mapRedemptionStatus = (status: string) => {
-    if (status === "COMPLETED") return "Concluido";
-    if (status === "ANALYSIS") return "Em Analise";
+  const mapWithdrawalStatus = (status: string) => {
+    if (status === "PAID") return "Concluido";
+    if (status === "PENDING") return "Em Analise";
     if (status === "REJECTED") return "Rejeitado";
     if (status === "APPROVED") return "Aprovado";
     return status;
+  };
+
+  const operationLabel = (op: StatementRow["operation"]) => {
+    if (op === "RESGATE_CAPITAL") return "RESGATE CAPITAL";
+    if (op === "LIQUIDACAO_RESULTADO") return "LIQ. RESULTADO";
+    if (op === "DISTRIBUICAO") return "DISTRIBUICAO";
+    return "APORTE";
   };
 
   const rows = useMemo<StatementRow[]>(() => {
@@ -253,24 +255,35 @@ const Transactions: React.FC<TransactionsProps> = ({ state }) => {
       direction: "IN",
     }));
 
-    const resgateRows: StatementRow[] = state.transactions
-      .filter((tx) => tx.type.includes("REDEMPTION"))
-      .map((tx: Transaction) => ({
-        id: String(tx.id),
-        date: tx.date,
-        operation: "RESGATE",
-        description: tx.description || `Resgate #${tx.id}`,
-        status: mapRedemptionStatus(tx.status),
-        amount: tx.amount,
-        direction: "OUT",
-      }));
+    const withdrawalRows: StatementRow[] = withdrawals.map((wd) => ({
+      id: String(wd.id),
+      date: wd.requested_at,
+      operation: wd.withdrawal_type === "CAPITAL_REDEMPTION" ? "RESGATE_CAPITAL" : "LIQUIDACAO_RESULTADO",
+      description:
+        wd.withdrawal_type === "CAPITAL_REDEMPTION"
+          ? `Resgate de Capital #${wd.id}`
+          : `Liquidacao de Resultados #${wd.id}`,
+      status: mapWithdrawalStatus(wd.status),
+      amount: (wd.amount_cents ?? 0) / 100,
+      direction: "OUT",
+    }));
 
-    return [...aporteRows, ...resgateRows].sort((a, b) => {
+    const distributionRows: StatementRow[] = distributions.map((dist) => ({
+      id: String(dist.id),
+      date: dist.created_at,
+      operation: "DISTRIBUICAO",
+      description: `Distribuicao Diaria (${dist.reference_date})`,
+      status: "Concluido",
+      amount: (dist.result_cents ?? 0) / 100,
+      direction: "IN",
+    }));
+
+    return [...aporteRows, ...withdrawalRows, ...distributionRows].sort((a, b) => {
       const byDate = new Date(b.date).getTime() - new Date(a.date).getTime();
       if (byDate !== 0) return byDate;
       return b.id.localeCompare(a.id);
     });
-  }, [investments, state.transactions]);
+  }, [investments, withdrawals, distributions]);
 
   const StatusBadge = ({ status }: { status: string }) => (
     <span
@@ -294,17 +307,23 @@ const Transactions: React.FC<TransactionsProps> = ({ state }) => {
 
     const totalIn = rows.filter((r) => r.direction === "IN").reduce((sum, r) => sum + r.amount, 0);
     const totalOut = rows.filter((r) => r.direction === "OUT").reduce((sum, r) => sum + r.amount, 0);
-
     const chunks: StatementRow[][] = [];
     for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) {
       chunks.push(rows.slice(i, i + ROWS_PER_PAGE));
     }
 
-    const pageStreams = chunks.map((chunk, idx) =>
+    const pdfRows = chunks.map((chunk) =>
+      chunk.map((r) => ({
+        ...r,
+        operation: operationLabel(r.operation),
+      }))
+    );
+
+    const pageStreams = pdfRows.map((chunk, idx) =>
       buildPageStream({
-        rows: chunk,
+        rows: chunk as StatementRow[],
         pageIndex: idx,
-        pageCount: chunks.length,
+        pageCount: pdfRows.length,
         clientName: user?.username || "Cliente",
         clientEmail: user?.email || "-",
         clientId: user?.id ? String(user.id) : "-",
@@ -317,7 +336,6 @@ const Transactions: React.FC<TransactionsProps> = ({ state }) => {
     const pdfBytes = buildPdfBytes(pageStreams);
     const blob = new Blob([pdfBytes], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
-
     const dateSuffix = new Date().toISOString().slice(0, 10);
     const a = document.createElement("a");
     a.href = url;
@@ -343,12 +361,10 @@ const Transactions: React.FC<TransactionsProps> = ({ state }) => {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg">
-        {loadingInvestments ? (
+        {loadingData ? (
           <div className="px-6 py-12 text-center text-slate-500">Carregando extrato...</div>
-        ) : investmentsError ? (
-          <div className="px-6 py-4 text-sm text-red-300 bg-red-500/10 border-b border-red-500/20">
-            {investmentsError}
-          </div>
+        ) : dataError ? (
+          <div className="px-6 py-4 text-sm text-red-300 bg-red-500/10 border-b border-red-500/20">{dataError}</div>
         ) : null}
 
         {rows.length === 0 ? (
@@ -374,7 +390,7 @@ const Transactions: React.FC<TransactionsProps> = ({ state }) => {
                     </div>
                     <div>
                       <div className="text-slate-500 mb-1">Operacao</div>
-                      <div className="font-mono text-slate-300">{row.operation}</div>
+                      <div className="font-mono text-slate-300">{operationLabel(row.operation)}</div>
                     </div>
                     <div className="col-span-2">
                       <div className="text-slate-500 mb-1">Status</div>
@@ -405,7 +421,7 @@ const Transactions: React.FC<TransactionsProps> = ({ state }) => {
                         <div className="text-[10px] text-slate-600">{new Date(row.date).toLocaleTimeString("pt-BR")}</div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-xs font-mono text-slate-300">{row.operation}</span>
+                        <span className="text-xs font-mono text-slate-300">{operationLabel(row.operation)}</span>
                       </td>
                       <td className="px-6 py-4 text-xs text-slate-300">{row.id}</td>
                       <td className="px-6 py-4 text-slate-300 text-xs">{row.description}</td>

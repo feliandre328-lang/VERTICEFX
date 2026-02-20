@@ -175,3 +175,14 @@ class DailyPerformanceDistributionAdminViewSet(
         created = in_ser.save()
         out_ser = DailyPerformanceDistributionSerializer(created, many=True)
         return Response(out_ser.data, status=status.HTTP_201_CREATED)
+
+
+class ClientDailyPerformanceDistributionViewSet(
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet,
+):
+    permission_classes = [IsAuthenticated]
+    serializer_class = DailyPerformanceDistributionSerializer
+
+    def get_queryset(self):
+        return DailyPerformanceDistribution.objects.filter(user=self.request.user).order_by("-reference_date", "-created_at")

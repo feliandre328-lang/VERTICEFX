@@ -318,6 +318,19 @@ export async function createDailyPerformanceDistribution(
   return (json ?? []) as DailyPerformanceDistribution[];
 }
 
+export async function listDailyPerformanceDistributions(access: string): Promise<DailyPerformanceDistribution[]> {
+  const res = await fetch(`${API_BASE}/performance-distributions/`, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(
+      `Falha ao listar distribuicoes de performance: ${res.status} ${formatError(res.status, raw, json)}`
+    );
+  }
+  return (json ?? []) as DailyPerformanceDistribution[];
+}
+
 // -------------------- ADMIN -------------------- //
 
 export type AdminInvestmentItem = {
