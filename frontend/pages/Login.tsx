@@ -1,20 +1,33 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ShieldCheck, User, Mail, Lock, ChevronLeft } from "lucide-react";
 import { useAuth } from "../layouts/AuthContext";
 
 type View = "role" | "client" | "admin";
 
-const Login: React.FC = () => {
+type Props = {
+  mode?: "client" | "admin"; // ✅ se vier, pula seleção e força a tela correta
+};
+
+const Login: React.FC<Props> = ({ mode }) => {
   const nav = useNavigate();
   const { loginClient, loginAdmin } = useAuth();
 
-  const [view, setView] = useState<View>("role");
+  const initialView: View = mode === "client" ? "client" : mode === "admin" ? "admin" : "role";
+
+  const [view, setView] = useState<View>(initialView);
   const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // ✅ Se mudar a rota (client/admin), atualiza view automaticamente
+  useEffect(() => {
+    if (mode === "client") setView("client");
+    else if (mode === "admin") setView("admin");
+    else setView("role");
+  }, [mode]);
 
   const title = useMemo(() => {
     if (view === "client") return "Acesso do Cliente";
@@ -23,10 +36,16 @@ const Login: React.FC = () => {
   }, [view]);
 
   const goToSignUp = () => nav("/signup");
+
   const goBack = () => {
     setErrorMsg("");
     setPassword("");
     setUsernameOrEmail("");
+
+    // ✅ Se mode foi informado, voltar deve levar pra rota correta, não pra seleção
+    if (mode === "client") return nav("/login", { replace: true });
+    if (mode === "admin") return nav("/admin/login", { replace: true });
+
     setView("role");
   };
 
@@ -46,6 +65,7 @@ const Login: React.FC = () => {
           <path d="M65 80 L65 35" stroke="url(#loginGradient)" strokeWidth="8" strokeLinecap="round" />
         </svg>
       </div>
+
       <h1 className="text-3xl font-bold text-white tracking-tight">VÉRTICE FX</h1>
       <p className="text-slate-500 text-sm uppercase tracking-widest mt-2">Sistema de Gestão Financeira</p>
     </div>
@@ -80,7 +100,6 @@ const Login: React.FC = () => {
     try {
       setLoading(true);
       await loginAdmin(usernameOrEmail, password);
-      // ✅ rota do backoffice (ajuste conforme suas rotas)
       nav("/app/admin/dashboard", { replace: true });
     } catch (err: any) {
       setErrorMsg(err?.message ?? "Falha no login do backoffice");
@@ -94,7 +113,6 @@ const Login: React.FC = () => {
       <LogoHeader />
 
       <div className="grid md:grid-cols-2 gap-6">
-        {/* CLIENT */}
         <button
           onClick={() => {
             setErrorMsg("");
@@ -113,7 +131,6 @@ const Login: React.FC = () => {
           </p>
         </button>
 
-        {/* ADMIN */}
         <button
           onClick={() => {
             setErrorMsg("");
@@ -156,7 +173,9 @@ const Login: React.FC = () => {
         <LogoHeader />
 
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-8">
-          <h2 className="text-xl font-bold text-white text-center mb-1">{title}</h2>
+          <h2 className="text-xl font-bold text-white text-center mb-1">
+            {isAdmin ? "Acesso ao Backoffice" : "Acesso do Cliente"}
+          </h2>
           <p className="text-sm text-slate-500 text-center mb-6">
             Entre com suas credenciais {isAdmin ? "do Backoffice" : "de cliente"}.
           </p>
@@ -223,26 +242,30 @@ const Login: React.FC = () => {
           )}
         </div>
 
-        <div className="mt-6 text-center">
-          <button
-            onClick={goBack}
-            className="text-sm text-slate-500 hover:text-slate-300 transition-colors flex items-center justify-center gap-2 mx-auto"
-            disabled={loading}
-            type="button"
-          >
-            <ChevronLeft size={16} />
-            Voltar
-          </button>
-        </div>
+        {/* ✅ Só mostra "Voltar" se NÃO estiver travado em uma rota fixa */}
+        {!mode && (
+          <div className="mt-6 text-center">
+            <button
+              onClick={goBack}
+              className="text-sm text-slate-500 hover:text-slate-300 transition-colors flex items-center justify-center gap-2 mx-auto"
+              disabled={loading}
+              type="button"
+            >
+              <ChevronLeft size={16} />
+              Voltar
+            </button>
+          </div>
+        )}
       </div>
     );
   };
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-      {view === "role" && renderRoleSelection()}
-      {view === "client" && renderForm("client")}
-      {view === "admin" && renderForm("admin")}
+      {/* ✅ Se mode veio, nunca mostra seleção */}
+      {!mode && view === "role" && renderRoleSelection()}
+      {(mode === "client" || view === "client") && renderForm("client")}
+      {(mode === "admin" || view === "admin") && renderForm("admin")}
     </div>
   );
 };
