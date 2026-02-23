@@ -77,6 +77,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
   const moneyFromCents = (cents: number) => cents / 100;
+  const normalizeSearch = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
 
   async function refreshAdminSummary() {
     if (!access) return;
@@ -267,10 +273,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [adminItems]);
 
   const filteredEligibleClients = useMemo(() => {
-    const q = searchClient.trim().toLowerCase();
+    const q = normalizeSearch(searchClient);
     if (!q) return eligibleClients;
     return eligibleClients.filter(
-      (u) => u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || String(u.user_id).includes(q)
+      (u) =>
+        normalizeSearch(u.username).includes(q) ||
+        normalizeSearch(u.email).includes(q) ||
+        String(u.user_id).includes(q)
     );
   }, [eligibleClients, searchClient]);
 
@@ -279,7 +288,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     [filteredEligibleClients]
   );
 
-  const StatsSection = () => {
+  const renderStatsSection = () => {
     const tvl = safeNumber(adminSummary?.tvl_cents, 0) / 100;
     const pendingValue = safeNumber(adminSummary?.pending_cents, 0) / 100;
     const pendingCount = safeNumber(adminSummary?.pending_count, 0);
@@ -323,7 +332,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
 
 
-  const ApprovalsSection = () => (
+  const renderApprovalsSection = () => (
     <div className="space-y-4">
       <h3 className="text-lg font-bold text-white flex items-center gap-2">
         <AlertCircle size={20} className="text-amber-500" />
@@ -412,7 +421,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     </div>
   );
 
-    const PerformanceSection = () => (
+  const renderPerformanceSection = () => (
     <div className="space-y-4">
       <h3 className="text-lg font-bold text-white flex items-center gap-2">
         <Activity size={20} className="text-blue-500" />
@@ -544,7 +553,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     </div>
   );
 
-  const ComplianceSection = () => (
+  const renderComplianceSection = () => (
     <div className="space-y-4">
       <h3 className="text-lg font-bold text-white flex items-center gap-2">
         <UserCheck size={20} className="text-purple-500" />
@@ -654,7 +663,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     </div>
   );
 
-  const AdminNavTabs = () => {
+  const renderAdminNavTabs = () => {
     const tabs = [
       { id: "admin-dashboard", label: "Geral", icon: Globe },
       { id: "admin-withdrawals", label: "Resgates", icon: AlertCircle },
@@ -689,17 +698,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const renderContent = () => {
     switch (view) {
       case "admin-withdrawals":
-        return <ApprovalsSection />;
+        return renderApprovalsSection();
       case "admin-performance":
-        return <PerformanceSection />;
+        return renderPerformanceSection();
       case "admin-compliance":
-        return <ComplianceSection />;
+        return renderComplianceSection();
       case "admin-dashboard":
       default:
         return (
           <div className="grid md:grid-cols-2 gap-6">
-            <ApprovalsSection />
-            <PerformanceSection />
+            {renderApprovalsSection()}
+            {renderPerformanceSection()}
           </div>
         );
     }
@@ -707,11 +716,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="space-y-6">
-      <AdminNavTabs />
+      {renderAdminNavTabs()}
 
       {view === "admin-dashboard" && (
         <>
-          <StatsSection />
+          {renderStatsSection()}
           {loadingSummary ? (
             <div className="text-xs text-slate-500">Atualizando TVL/Pendências...</div>
           ) : null}
@@ -724,4 +733,5 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 };
 
 export default AdminDashboard;
+
 
