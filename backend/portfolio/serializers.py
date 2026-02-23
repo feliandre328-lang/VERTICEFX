@@ -1,6 +1,7 @@
 from decimal import Decimal
 from rest_framework import serializers
 from .models import Investment
+from accounts.models import AccountProfile
 
 class InvestmentSerializer(serializers.ModelSerializer):
     # frontend manda "amount" em reais; salvamos em cents
@@ -61,3 +62,30 @@ class PixChargeResponseSerializer(serializers.Serializer):
     pix_code = serializers.CharField()
     external_ref = serializers.CharField()
     qr_code_base64 = serializers.CharField(allow_blank=True, required=False)
+
+class AdminClientSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(source="user.id", read_only=True)
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.CharField(source="user.email", read_only=True)
+    date_joined = serializers.DateTimeField(source="user.date_joined", read_only=True)
+
+    class Meta:
+        model = AccountProfile
+        fields = [
+            "user_id",
+            "username",
+            "email",
+            "date_joined",
+            "full_name",
+            "cpf",
+            "phone",
+            "dob",
+            "zip_code",
+            "street",
+            "number",
+            "complement",
+            "neighborhood",
+            "city",
+            "state",
+            "created_at",
+        ]

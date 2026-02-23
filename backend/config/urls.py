@@ -27,6 +27,8 @@ from notifications.views import NotificationViewSet
 
 from portfolio.auth_views import MeView
 
+from accounts.admin_views import AdminClientsView, AdminClientStatementView
+
 router = DefaultRouter()
 router.register("investments", InvestmentViewSet, basename="investment")
 router.register("admin/investments", AdminInvestmentViewSet, basename="admin-investments")
@@ -62,4 +64,11 @@ urlpatterns = [
 
     #Sign up
     path("api/", include("accounts.urls")),
+
+    
+
+    path("api/admin/clients/", AdminClientsView.as_view()),
+    #path("api/admin/clients/<int:user_id>/", AdminClientDetailView.as_view()),
+    path("api/admin/clients/<int:user_id>/statement/", AdminClientStatementView.as_view()),
 ]
+

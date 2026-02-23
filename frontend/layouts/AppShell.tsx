@@ -6,6 +6,7 @@ import Sidebar from "../components/Sidebar";
 import NewsTicker from "../components/NewsTicker";
 
 import AdminPendingInvestments from "../pages/AdminPendingInvestments";
+import AdminClientDetail from "../pages/AdminClientDetail";
 
 import * as FinanceService from "../services/financialService";
 import { SystemState, UserProfile, UserRole } from "../types";
@@ -20,8 +21,7 @@ import {
 } from "../services/api";
 
 // Pages
-import Dashboard from "../pages/Dashboard";
-import AdminDashboard from "../pages/AdminDashboard";
+import DashboardRoute from "../pages/DashboardRoute";
 import Investments from "../pages/Investments";
 import Yields from "../pages/Yields";
 import Withdrawals from "../pages/Withdrawals";
@@ -29,7 +29,8 @@ import Transactions from "../pages/Transactions";
 import Referrals from "../pages/Referrals";
 import Transparency from "../pages/Transparency";
 
-import DashboardRoute from "../pages/DashboardRoute";
+import AdminDashboard from "../pages/AdminDashboard";
+import AdminClients from "../pages/AdminClients"; // ✅ NOVO
 
 function RequireAdmin({ children }: { children: React.ReactNode }) {
   const { role } = useAuth();
@@ -44,7 +45,7 @@ export default function AppShell() {
 
   const { role, logout, getAccessToken, user: authUser } = useAuth();
 
-  // ✅ VOLTANDO O "CORAÇÃO" DO APP ANTIGO: systemState aqui
+  // ✅ systemState
   const [systemState, setSystemState] = useState<SystemState>(() => FinanceService.getSystemState());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isBellOpen, setIsBellOpen] = useState(false);
@@ -85,7 +86,7 @@ export default function AppShell() {
     }
   };
 
-  // ✅ Mesmo mock user do seu App.tsx antigo
+  // ✅ mock user
   const user: UserProfile = useMemo(
     () => ({
       id: "CLT-8821",
@@ -121,18 +122,23 @@ export default function AppShell() {
   const loadNotifications = async () => {
     const token = getAccessToken();
     if (!token) return;
+
     try {
       const [count, list] = await Promise.all([
         getNotificationsUnreadCount(token),
         listNotifications(token, { limit: 20 }),
       ]);
+
       setUnreadCount(count);
       setNotifications(list);
 
       if (hasLoadedNotificationsRef.current && count > prevUnreadRef.current) {
         playNotificationBeep();
-        window.dispatchEvent(new CustomEvent("vfx:notifications:new", { detail: { unread_count: count } }));
+        window.dispatchEvent(
+          new CustomEvent("vfx:notifications:new", { detail: { unread_count: count } })
+        );
       }
+
       prevUnreadRef.current = count;
       hasLoadedNotificationsRef.current = true;
     } catch {
@@ -157,9 +163,11 @@ export default function AppShell() {
   useEffect(() => {
     const token = getAccessToken();
     if (!token) return;
+
     const timer = setInterval(() => {
       loadNotifications();
     }, 5000);
+
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
@@ -182,7 +190,7 @@ export default function AppShell() {
     } catch {}
   };
 
-  // --- Handlers (iguais do App.tsx antigo) ---
+  // --- Handlers ---
   const handleCreateInvestment = (amount: number) => {
     const newState = FinanceService.createContribution(amount);
     setSystemState(newState);
@@ -198,21 +206,20 @@ export default function AppShell() {
     }
   };
 
-  // Admin
+  // Admin (mantém)
   const handleAdminApprove = (id: string) => setSystemState(FinanceService.approveTransaction(id));
   const handleAdminReject = (id: string) => setSystemState(FinanceService.rejectTransaction(id));
-  const handleSetPerformance = (percent: number) => setSystemState(FinanceService.processManualPerformance(percent));
-  const handleToggleVerification = (userId: string) => setSystemState(FinanceService.toggleUserVerification(userId));
+  const handleSetPerformance = (percent: number) =>
+    setSystemState(FinanceService.processManualPerformance(percent));
+  const handleToggleVerification = (userId: string) =>
+    setSystemState(FinanceService.toggleUserVerification(userId));
 
   const formattedDate =
     systemState?.currentVirtualDate
       ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(new Date(systemState.currentVirtualDate))
       : "";
 
-  const title = loc.pathname
-    .replace("/app/", "")
-    .replaceAll("-", " ")
-    .replaceAll("/", " / ");
+  const title = loc.pathname.replace("/app/", "").replaceAll("-", " ").replaceAll("/", " / ");
 
   const greeting = (() => {
     const hour = new Date().getHours();
@@ -220,6 +227,7 @@ export default function AppShell() {
     if (hour < 18) return "Boa tarde";
     return "Boa noite";
   })();
+
   const greetingName = authUser?.username || (role === "ADMIN" ? "Administrador" : "Cliente");
 
   return (
@@ -247,7 +255,9 @@ export default function AppShell() {
             </button>
 
             <div className="hidden sm:block">
-              <h2 className="text-sm font-semibold text-white capitalize tracking-wide">{title || "dashboard"}</h2>
+              <h2 className="text-sm font-semibold text-white capitalize tracking-wide">
+                {title || "dashboard"}
+              </h2>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 {greeting}, <span className="text-slate-300">{greetingName}</span>
               </p>
@@ -267,8 +277,7 @@ export default function AppShell() {
                 <span className={`text-xs font-mono ${role === "ADMIN" ? "text-emerald-400" : "text-slate-400"}`}>
                   {formattedDate}
                 </span>
-
-                </div>
+              </div>
             )}
 
             <button
@@ -277,9 +286,10 @@ export default function AppShell() {
             >
               <Bell size={18} />
               {unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full"></span>
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full" />
               )}
             </button>
+
             {isBellOpen && (
               <div className="absolute right-4 md:right-6 top-14 w-[360px] max-w-[calc(100vw-2rem)] z-30 rounded-lg border border-slate-800 bg-slate-900 shadow-2xl shadow-black/40">
                 <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
@@ -292,6 +302,7 @@ export default function AppShell() {
                     Marcar todas como lidas
                   </button>
                 </div>
+
                 <div className="max-h-96 overflow-y-auto">
                   {notifications.length === 0 ? (
                     <p className="p-4 text-xs text-slate-500 text-center">Sem notificações.</p>
@@ -322,18 +333,21 @@ export default function AppShell() {
         <div ref={mainContentRef} className="flex-1 p-4 md:p-6 pb-12 overflow-y-auto bg-slate-950">
           <div className="max-w-7xl mx-auto space-y-6">
             <Routes>
+              <Route path="dashboard" element={<DashboardRoute />} />
               <Route
-                path="dashboard"
-                element={<DashboardRoute />}
+                path="investments"
+                element={<Investments state={systemState} onCreateInvestment={handleCreateInvestment} />}
               />
-              <Route path="investments" element={<Investments state={systemState} onCreateInvestment={handleCreateInvestment} />} />
               <Route path="yields" element={<Yields state={systemState} />} />
-              <Route path="withdrawals" element={<Withdrawals state={systemState} onRequestWithdrawal={handleWithdraw} />} />
+              <Route
+                path="withdrawals"
+                element={<Withdrawals state={systemState} onRequestWithdrawal={handleWithdraw} />}
+              />
               <Route path="transactions" element={<Transactions state={systemState} />} />
               <Route path="referrals" element={<Referrals user={user} state={systemState} />} />
               <Route path="transparency" element={<Transparency />} />
 
-              {/* ADMIN (/app/admin/...) */}
+              {/* ADMIN */}
               <Route
                 path="admin/dashboard"
                 element={
@@ -355,7 +369,7 @@ export default function AppShell() {
                 path="admin/withdrawals"
                 element={
                   <RequireAdmin>
-                    <AdminPendingInvestments/>
+                    <AdminPendingInvestments />
                   </RequireAdmin>
                 }
               />
@@ -377,22 +391,27 @@ export default function AppShell() {
                 }
               />
 
+              {/* ✅ CLIENTES (Página nova) */}
               <Route
-                path="admin/compliance"
+                path="admin/clients"
                 element={
                   <RequireAdmin>
-                    <AdminDashboard
-                      state={systemState}
-                      onApprove={handleAdminApprove}
-                      onReject={handleAdminReject}
-                      onSetPerformance={handleSetPerformance}
-                      onToggleVerification={handleToggleVerification}
-                      view="admin-compliance"
-                      onNavigate={(p) => nav(`/app/${p}`)}
-                    />
+                    <AdminClients />
                   </RequireAdmin>
                 }
               />
+
+              <Route
+                path="admin/clients/:id"
+                element={
+                  <RequireAdmin>
+                    <AdminClientDetail />
+                  </RequireAdmin>
+                }
+              />
+
+              {/* ✅ manter rota antiga */}
+              <Route path="admin/compliance" element={<Navigate to="/app/admin/clients" replace />} />
 
               <Route
                 path="admin/transactions"
@@ -424,5 +443,3 @@ export default function AppShell() {
     </div>
   );
 }
-
-

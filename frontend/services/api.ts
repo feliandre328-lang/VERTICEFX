@@ -660,3 +660,84 @@ export async function signup(payload: SignupPayload): Promise<SignupResponse> {
 
   return json as SignupResponse;
 }
+
+export type AdminClient = {
+  user_id: number;
+  username: string;
+  email: string;
+  date_joined: string;
+
+  full_name: string;
+  cpf: string;
+  phone: string;
+  dob: string | null;
+
+  zip_code: string;
+  street: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+
+  created_at: string;
+};
+
+export async function listAdminClients(access: string): Promise<AdminClient[]> {
+  const res = await fetch(`${API_BASE}/admin/clients/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar clientes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return (json ?? []) as AdminClient[];
+}
+
+export type AdminClientStatement = {
+  totals: {
+    invested_cents: number;
+    withdrawn_cents: number;
+    balance_cents: number;
+  };
+  investments: Array<{
+    id: number;
+    amount_cents: number;
+    status: string;
+    created_at: string;
+    external_ref: string | null;
+  }>;
+  withdrawals: Array<{
+    id: number;
+    amount_cents: number;
+    status: string;
+    created_at: string;
+    external_ref: string | null;
+  }>;
+};
+
+export async function getAdminClient(access: string, id: number): Promise<AdminClient> {
+  const res = await fetch(`${API_BASE}/admin/clients/${id}/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar cliente: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as AdminClient;
+}
+
+export async function getAdminClientStatement(access: string, id: number): Promise<AdminClientStatement> {
+  const res = await fetch(`${API_BASE}/admin/clients/${id}/statement/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar extrato: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as AdminClientStatement;
+}

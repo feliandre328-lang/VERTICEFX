@@ -21,8 +21,6 @@ interface SidebarProps {
   onLogout: () => void | Promise<void>;
   isMobileOpen?: boolean;
   onMobileClose?: () => void;
-  activePage?: string;
-  onNavigate?: (page: string) => void;
 }
 
 type MenuItem = {
@@ -45,7 +43,7 @@ const adminItems: MenuItem[] = [
   { label: "Mesa Operacional", icon: LayoutDashboard, to: "/app/admin/dashboard" },
   { label: "Aprovações Pendentes", icon: Wallet, to: "/app/admin/withdrawals" },
   { label: "Performance Diária", icon: BarChart3, to: "/app/admin/performance" },
-  { label: "Compliance (KYC)", icon: UserCheck, to: "/app/admin/compliance" },
+  { label: "Clientes", icon: UserCheck, to: "/app/admin/clients" }, // ✅ AQUI
   { label: "Log de Transações", icon: FileText, to: "/app/transactions" },
   { label: "Configurações", icon: Settings, to: "/app/admin/settings" },
 ];
@@ -54,8 +52,7 @@ export default function Sidebar({ role, onLogout, isMobileOpen = false, onMobile
   const navigate = useNavigate();
   const menuItems = role === "ADMIN" ? adminItems : clientItems;
 
-  const baseClass =
-    "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all duration-200";
+  const baseClass = "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all duration-200";
   const inactiveClass = "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50";
   const activeClass = "bg-slate-800 text-white font-medium border-l-2 border-emerald-500";
 
@@ -143,7 +140,12 @@ export default function Sidebar({ role, onLogout, isMobileOpen = false, onMobile
           <aside className="relative h-full w-72 max-w-[85vw] bg-slate-900 border-r border-slate-800 flex flex-col z-50">
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-white">Menu</h2>
-              <button type="button" aria-label="Fechar" onClick={onMobileClose} className="p-2 text-slate-400 hover:text-white">
+              <button
+                type="button"
+                aria-label="Fechar"
+                onClick={onMobileClose}
+                className="p-2 text-slate-400 hover:text-white"
+              >
                 <X size={18} />
               </button>
             </div>
