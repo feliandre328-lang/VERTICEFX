@@ -297,7 +297,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Total Sob Gestão (TVL)"
-          value={formatCurrency(tvl)}
+          value={
+            <span className="text-emerald-500 font-semibold">
+              {formatCurrency(tvl)}
+            </span>
+          }
           icon={DollarSign}
           color="emerald"
         />

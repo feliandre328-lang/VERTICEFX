@@ -4,6 +4,7 @@ import { Wallet, TrendingUp, Archive, ArrowUpRight } from "lucide-react";
 import { SystemState } from "../types";
 import { InvestmentItem, listInvestments } from "../services/api";
 import { useAuth } from "../layouts/AuthContext";
+import Money from "../components/Money";
 
 interface DashboardProps {
   state: SystemState;
@@ -92,14 +93,14 @@ const Dashboard: React.FC<DashboardProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <StatCard
           label="Patrimonio Principal"
-          value={formatCurrency(state.balanceCapital)}
+          value={<Money>{formatCurrency(state.balanceCapital)}</Money>}
           subValue="Capital sob gestao"
           icon={Wallet}
           color="slate"
         />
         <StatCard
           label="Performance Acumulada"
-          value={formatCurrency(state.balanceResults)}
+          value={<Money>{formatCurrency(state.balanceResults)}</Money>}
           subValue="Ganhos em destaque"
           icon={TrendingUp}
           color="emerald"

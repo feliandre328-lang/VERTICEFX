@@ -1,41 +1,40 @@
-import React from 'react';
-import { LucideIcon } from 'lucide-react';
+import React from "react";
 
-interface StatCardProps {
+type StatCardProps = {
   label: string;
-  value: string;
-  subValue?: string;
-  icon: LucideIcon;
-  trend?: 'up' | 'down' | 'neutral';
-  color?: 'blue' | 'emerald' | 'amber' | 'purple' | 'slate';
+  value: React.ReactNode;        // ✅ era string
+  subValue?: React.ReactNode;     // ✅ opcional, também pode virar ReactNode
+  icon: any;
+  color?: string;
   isAnimated?: boolean;
-}
+};
 
-const StatCard: React.FC<StatCardProps> = ({ label, value, subValue, icon: Icon, color = 'slate', isAnimated = false }) => {
-  const colorMap = {
-    blue: 'bg-blue-500/5 text-blue-500 border-blue-500/10',
-    emerald: 'bg-emerald-500/5 text-emerald-600 border-emerald-500/10', // Darker green
-    amber: 'bg-amber-500/5 text-amber-500 border-amber-500/10',
-    purple: 'bg-purple-500/5 text-purple-500 border-purple-500/10',
-    slate: 'bg-slate-500/5 text-slate-400 border-slate-500/10',
-  };
-
+export default function StatCard({
+  label,
+  value,
+  subValue,
+  icon: Icon,
+  color = "slate",
+  isAnimated = false,
+}: StatCardProps) {
   return (
-    <div className={`relative overflow-hidden rounded-lg border bg-slate-900/50 p-6 ${colorMap[color].split(' ')[2]} ${isAnimated ? 'animate-float' : ''}`}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</p>
-          <h3 className="mt-2 text-2xl font-semibold text-slate-100 tracking-tight">{value}</h3>
-          {subValue && (
-            <p className="mt-1 text-xs text-slate-400">{subValue}</p>
-          )}
+    <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] text-slate-400 uppercase tracking-wide font-semibold">{label}</p>
+
+          {/* ✅ aqui NÃO pode assumir string */}
+          <div className={`mt-2 text-2xl font-extrabold text-slate-100 ${isAnimated ? "animate-pulse" : ""}`}>
+            {value}
+          </div>
+
+          {subValue ? <div className="mt-1 text-xs text-slate-500">{subValue}</div> : null}
         </div>
-        <div className={`p-2 rounded-lg ${colorMap[color]}`}>
-          <Icon size={20} />
+
+        <div className="shrink-0 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+          <Icon size={18} className="text-slate-300" />
         </div>
       </div>
     </div>
   );
-};
-
-export default StatCard;
+}
