@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SystemState } from "../types";
 import { Wallet, ShieldCheck, CheckCircle, FileSearch, Calendar as CalendarIcon, Clock } from "lucide-react";
 import { useAuth } from "../layouts/AuthContext";
@@ -20,6 +20,21 @@ const toCurrency = (val: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
 const centsToReais = (cents: number) => cents / 100;
+const toInputDate = (value?: string | number) => {
+  const d = value ? new Date(value) : new Date();
+  if (Number.isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+const formatDateBR = (value: string) => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-");
+    return `${day}/${month}/${year}`;
+  }
+  return new Date(value).toLocaleDateString("pt-BR");
+};
 const parsePtBrCurrency = (value: string) => {
   if (!value) return 0;
   const normalized = value.replace(/\./g, "").replace(",", ".");
@@ -38,67 +53,73 @@ const statusLabel = (status: string) => {
 const typeLabel = (kind: WithdrawalType) =>
   kind === "CAPITAL_REDEMPTION" ? "Resgate de Capital" : "Liquidação de Resultados";
 
-const Withdrawals: React.FC<WithdrawalsProps> = ({ state }) => {
+const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
   const { getAccessToken } = useAuth();
+  const todayDate = useMemo(() => toInputDate(Date.now()), []);
 
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"CAPITAL" | "RESULT">("RESULT");
-  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledDate, setScheduledDate] = useState(todayDate);
   const [summary, setSummary] = useState<WithdrawalSummary | null>(null);
   const [items, setItems] = useState<WithdrawalItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const summaryRequestSeq = useRef(0);
 
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
-  async function loadWithdrawalData(referenceDate?: string, options?: { silent?: boolean }) {
+  async function loadWithdrawalData(
+    referenceDate?: string,
+    options?: { silent?: boolean; refreshItems?: boolean }
+  ) {
     if (!access) return;
     const silent = !!options?.silent;
+    const refreshItems = options?.refreshItems ?? true;
+    const requestSeq = ++summaryRequestSeq.current;
     if (!silent) setLoading(true);
     setErrorMsg("");
     try {
       const [summaryData, withdrawalsData] = await Promise.all([
         getWithdrawalSummary(access, referenceDate),
-        listWithdrawals(access),
+        refreshItems ? listWithdrawals(access) : Promise.resolve(null),
       ]);
+      if (requestSeq !== summaryRequestSeq.current) return;
       setSummary(summaryData);
-      setItems(withdrawalsData);
-      if (!scheduledDate && summaryData.capital_cutoff_date) {
-        setScheduledDate(summaryData.capital_cutoff_date);
+      if (withdrawalsData) {
+        setItems(withdrawalsData);
       }
     } catch (err: any) {
+      if (requestSeq !== summaryRequestSeq.current) return;
       setErrorMsg(err?.message ?? "Falha ao carregar dados de resgate.");
     } finally {
+      if (requestSeq !== summaryRequestSeq.current) return;
       if (!silent) setLoading(false);
       if (!initialized) setInitialized(true);
     }
   }
 
   useEffect(() => {
-    const refDate = type === "CAPITAL" ? scheduledDate || undefined : undefined;
-    loadWithdrawalData(refDate, { silent: initialized });
+    const refreshItems = !initialized || type !== "CAPITAL";
+    loadWithdrawalData(undefined, { silent: initialized, refreshItems });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [access, type, scheduledDate, initialized]);
+  }, [access, type, initialized]);
 
   useEffect(() => {
     const onNotif = () => {
-      const refDate = type === "CAPITAL" ? scheduledDate || undefined : undefined;
-      loadWithdrawalData(refDate, { silent: true });
+      loadWithdrawalData(undefined, { silent: true });
     };
     window.addEventListener("vfx:notifications:new", onNotif);
     return () => window.removeEventListener("vfx:notifications:new", onNotif);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [access, type, scheduledDate]);
+  }, [access, type]);
 
   useEffect(() => {
-    if (type === "CAPITAL") {
-      setScheduledDate(summary?.capital_cutoff_date ?? "");
-      return;
+    if (scheduledDate < todayDate) {
+      setScheduledDate(todayDate);
     }
-    setScheduledDate(new Date(state.currentVirtualDate || Date.now()).toISOString().split("T")[0]);
-  }, [type, summary?.capital_cutoff_date, state.currentVirtualDate]);
+  }, [scheduledDate, todayDate]);
 
   const maxAvailable =
     type === "CAPITAL"
@@ -181,12 +202,12 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state }) => {
 
           <div className="mb-6 p-4 bg-slate-950 rounded border border-slate-800">
             <p className="text-xs text-slate-500 mb-1 uppercase tracking-wider">
-              {type === "CAPITAL" ? "Capital Disponível (até hoje)" : "Saldo de Resultados Disponível"}
+              {type === "CAPITAL" ? "Capital Disponivel Total" : "Saldo de Resultados Disponivel"}
             </p>
             <p className="text-xl font-bold text-white">{toCurrency(displayAvailable)}</p>
             {type === "CAPITAL" && summary?.capital_cutoff_date && (
               <p className="text-[11px] text-slate-600 mt-1">
-                Corte de capital para resgate: {new Date(summary.capital_cutoff_date).toLocaleDateString("pt-BR")}.
+                Corte de capital para resgate: {formatDateBR(summary.capital_cutoff_date)}.
               </p>
             )}
           </div>
@@ -228,11 +249,10 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state }) => {
                   <input
                     type="date"
                     value={scheduledDate}
-                    min={type === "RESULT" ? new Date(state.currentVirtualDate || Date.now()).toISOString().split("T")[0] : undefined}
-                    max={type === "CAPITAL" ? summary?.capital_cutoff_date : undefined}
+                    min={todayDate}
                     onChange={(e) => setScheduledDate(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 focus:ring-1 focus:ring-blue-900 [color-scheme:dark]"
-                    required={type === "CAPITAL"}
+                    required
                   />
                 </div>
               </div>
@@ -345,3 +365,4 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state }) => {
 };
 
 export default Withdrawals;
+

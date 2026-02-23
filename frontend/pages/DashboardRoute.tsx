@@ -69,16 +69,6 @@ export default function DashboardRoute() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access]);
 
-  const handleReinvest = () => {
-    const result = FinanceService.reinvestResults();
-    if (result.success && result.newState) {
-      setSystemState(result.newState);
-      alert(result.message);
-    } else {
-      alert(result.message);
-    }
-  };
-
   const parseBRL = (value: string) => {
     const s = (value || "").trim().replace(/\s/g, "").replace("R$", "").replace(/\./g, "").replace(",", ".");
     const n = Number(s);
@@ -166,7 +156,6 @@ export default function DashboardRoute() {
       <Dashboard
         state={systemState}
         onNavigate={(p) => navigate(`/app/${p}`)}
-        onReinvest={handleReinvest}
         onOpenPix={handleOpenPix}
         amountInput={amountInput}
         setAmountInput={handleAmountChange}

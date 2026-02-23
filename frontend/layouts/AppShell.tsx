@@ -47,7 +47,6 @@ export default function AppShell() {
   // ✅ VOLTANDO O "CORAÇÃO" DO APP ANTIGO: systemState aqui
   const [systemState, setSystemState] = useState<SystemState>(() => FinanceService.getSystemState());
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
   const [isBellOpen, setIsBellOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -199,30 +198,11 @@ export default function AppShell() {
     }
   };
 
-  const handleReinvest = () => {
-    const result = FinanceService.reinvestResults();
-    if (result.success && result.newState) {
-      setSystemState(result.newState);
-      alert(result.message);
-    } else {
-      alert(result.message);
-    }
-  };
-
   // Admin
   const handleAdminApprove = (id: string) => setSystemState(FinanceService.approveTransaction(id));
   const handleAdminReject = (id: string) => setSystemState(FinanceService.rejectTransaction(id));
   const handleSetPerformance = (percent: number) => setSystemState(FinanceService.processManualPerformance(percent));
   const handleToggleVerification = (userId: string) => setSystemState(FinanceService.toggleUserVerification(userId));
-
-  // Simulação demo
-  const simulateNextDay = () => {
-    setIsSimulating(true);
-    setTimeout(() => {
-      setSystemState(FinanceService.processPerformanceDistribution());
-      setIsSimulating(false);
-    }, 600);
-  };
 
   const formattedDate =
     systemState?.currentVirtualDate
@@ -288,17 +268,7 @@ export default function AppShell() {
                   {formattedDate}
                 </span>
 
-                {/* botão só pra CLIENT (igual seu original) */}
-                {role !== "ADMIN" && (
-                  <button
-                    onClick={simulateNextDay}
-                    disabled={isSimulating}
-                    className="ml-2 text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded transition-colors disabled:opacity-50 border border-slate-700"
-                  >
-                    {isSimulating ? "..." : "Avançar"}
-                  </button>
-                )}
-              </div>
+                </div>
             )}
 
             <button
@@ -352,13 +322,12 @@ export default function AppShell() {
         <div ref={mainContentRef} className="flex-1 p-4 md:p-6 pb-12 overflow-y-auto bg-slate-950">
           <div className="max-w-7xl mx-auto space-y-6">
             <Routes>
-              {/* CLIENT */}
               <Route
                 path="dashboard"
                 element={<DashboardRoute />}
               />
               <Route path="investments" element={<Investments state={systemState} onCreateInvestment={handleCreateInvestment} />} />
-              <Route path="yields" element={<Yields state={systemState} onReinvest={handleReinvest} />} />
+              <Route path="yields" element={<Yields state={systemState} />} />
               <Route path="withdrawals" element={<Withdrawals state={systemState} onRequestWithdrawal={handleWithdraw} />} />
               <Route path="transactions" element={<Transactions state={systemState} />} />
               <Route path="referrals" element={<Referrals user={user} state={systemState} />} />
@@ -455,3 +424,5 @@ export default function AppShell() {
     </div>
   );
 }
+
+

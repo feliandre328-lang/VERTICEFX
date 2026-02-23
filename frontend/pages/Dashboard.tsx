@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import StatCard from "../components/StatCard";
-import { Wallet, TrendingUp, Archive, ArrowUpRight, Repeat, AlertTriangle } from "lucide-react";
+import { Wallet, TrendingUp, Archive, ArrowUpRight } from "lucide-react";
 import { SystemState } from "../types";
 import { InvestmentItem, listInvestments } from "../services/api";
 import { useAuth } from "../layouts/AuthContext";
@@ -8,7 +8,6 @@ import { useAuth } from "../layouts/AuthContext";
 interface DashboardProps {
   state: SystemState;
   onNavigate: (page: string) => void;
-  onReinvest: () => void;
   onOpenPix: () => void;
   amountInput?: string;
   setAmountInput?: (v: string) => void;
@@ -18,7 +17,6 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({
   state,
   onNavigate,
-  onReinvest,
   onOpenPix,
   amountInput = "",
   setAmountInput = () => {},
@@ -91,15 +89,6 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <>
-      <div className="bg-blue-900/20 border border-blue-800/50 p-4 rounded-lg flex flex-col sm:flex-row gap-3 items-start">
-        <AlertTriangle className="text-blue-500 shrink-0 mt-0.5" size={18} />
-        <div className="text-xs sm:text-sm text-blue-200/80 leading-relaxed">
-          <strong>Aviso de Risco:</strong> A rentabilidade passada nao representa garantia de rentabilidade futura.
-          Ativos digitais sao investimentos de risco. Leia a Politica de Riscos e o Contrato de Prestacao de Servicos
-          antes de operar.
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <StatCard
           label="Patrimonio Principal"
@@ -111,9 +100,10 @@ const Dashboard: React.FC<DashboardProps> = ({
         <StatCard
           label="Performance Acumulada"
           value={formatCurrency(state.balanceResults)}
-          subValue="Resultado disponivel"
+          subValue="Ganhos em destaque"
           icon={TrendingUp}
-          color="blue"
+          color="emerald"
+          isAnimated
         />
         <StatCard
           label="Total Aportado"
@@ -143,14 +133,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           >
             <ArrowUpRight size={16} />
             {loadingPix ? "Gerando Pix..." : "Gerar Pix"}
-          </button>
-
-          <button
-            onClick={onReinvest}
-            className="w-full py-2 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2 border border-slate-700"
-          >
-            <Repeat size={16} />
-            Reinvestir Resultado
           </button>
         </div>
       </div>

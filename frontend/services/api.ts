@@ -3,7 +3,7 @@
 // - Dev local: VITE_API_BASE=http://127.0.0.1:8000/api
 // Observação: com API_BASE = "/api", NÃO use "/api" de novo nos endpoints.
 
-export const API_BASE: string = import.meta.env.VITE_API_BASE ?? "/api";
+export const API_BASE: string = import.meta.env.VITE_API_BASE_DEV ?? "/api";
 
 // -------------------- HELPERS -------------------- //
 

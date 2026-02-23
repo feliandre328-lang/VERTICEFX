@@ -17,8 +17,8 @@ FRONTEND_DIR="frontend"
 DJANGO_WSGI="config.wsgi:application"
 DJANGO_SETTINGS_FILE="${APP_DIR}/${BACKEND_DIR}/config/settings.py"
 
-SERVER_NAME="3.134.106.62"
-DOMAINS_FOR_SSL="www.verticefx.com.br verticefx.com.br" # domínios para HTTPS automático
+SERVER_NAME="18.218.219.161"
+DOMAINS_FOR_SSL="www.verticefx.com.br verticefx.com.br" # domï¿½nios para HTTPS automï¿½tico
 SSL_EMAIL="andressa.anthero7@gmail.com"
 ENABLE_SSL_NOW="0" # 1 = roda certbot agora | 0 = deixa para depois
 
@@ -190,8 +190,7 @@ setup_backend(){
     source '${VENV_DIR}/bin/activate' &&
     export DJANGO_SETTINGS_MODULE=config.settings &&
     cd '${APP_DIR}/${BACKEND_DIR}' &&
-    python manage.py migrate --noinput &&
-    python manage.py collectstatic --noinput
+    python manage.py migrate --noinput
   "
 }
 
@@ -287,7 +286,7 @@ server {
     }
 
     location /api/ {
-        proxy_pass http://unix:/run/gunicorn/gunicorn.sock:;
+        proxy_pass http://unix:/run/gunicorn/gunicorn.sock;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -296,7 +295,7 @@ server {
     }
 
     location /admin/ {
-        proxy_pass http://unix:/run/gunicorn/gunicorn.sock:;
+        proxy_pass http://unix:/run/gunicorn/gunicorn.sock;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;

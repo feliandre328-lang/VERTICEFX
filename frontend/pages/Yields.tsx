@@ -12,7 +12,7 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { Repeat, Info, TrendingUp, Wallet, Percent } from "lucide-react";
+import { Info, TrendingUp, Wallet, Percent } from "lucide-react";
 import { useAuth } from "../layouts/AuthContext";
 import {
   getWithdrawalSummary,
@@ -22,10 +22,9 @@ import {
 
 interface YieldsProps {
   state: SystemState;
-  onReinvest: () => void;
 }
 
-const Yields: React.FC<YieldsProps> = ({ onReinvest }) => {
+const Yields: React.FC<YieldsProps> = () => {
   const { getAccessToken } = useAuth();
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
@@ -116,13 +115,6 @@ const Yields: React.FC<YieldsProps> = ({ onReinvest }) => {
         <div className="text-left sm:text-right mt-2 sm:mt-0">
           <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Resultado Líquido Disponível</p>
           <h3 className="text-3xl font-semibold text-white tracking-tight">{formatCurrency(availableResultCents / 100)}</h3>
-          <button
-            onClick={onReinvest}
-            className="mt-3 text-xs flex items-center justify-center sm:justify-end gap-2 bg-slate-800 hover:bg-slate-700 text-blue-400 px-3 py-2 rounded transition-colors w-full sm:w-auto ml-auto border border-slate-700 font-medium"
-          >
-            <Repeat size={14} />
-            Reinvestir em novo contrato
-          </button>
         </div>
       </div>
 
