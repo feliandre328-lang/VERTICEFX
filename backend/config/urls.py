@@ -59,4 +59,7 @@ urlpatterns = [
 
     # API
     path("api/", include(router.urls)),
+
+    #Sign up
+    path("api/", include("accounts.urls")),
 ]

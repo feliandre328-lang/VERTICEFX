@@ -3,7 +3,7 @@
 // - Dev local: VITE_API_BASE=http://127.0.0.1:8000/api
 // Observação: com API_BASE = "/api", NÃO use "/api" de novo nos endpoints.
 
-export const API_BASE: string = import.meta.env.VITE_API_BASE_DEV ?? "/api";
+export const API_BASE: string = import.meta.env.VITE_API_BASE ?? "/api";
 
 // -------------------- HELPERS -------------------- //
 
@@ -617,4 +617,46 @@ export async function rejectAdminWithdrawal(
     throw new Error(`Falha ao rejeitar resgate: ${res.status} ${formatError(res.status, raw, json)}`);
   }
   return json as AdminWithdrawalItem;
+}
+
+// ------ Sing UP ----- //
+export type SignupPayload = {
+  username: string;
+  email?: string;
+  password: string;
+  password2: string;
+  full_name: string;
+  cpf: string;
+  phone?: string;
+  dob?: string;
+  zip_code?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+};
+
+export type SignupResponse = {
+  user: { id: number; username: string; email: string };
+  profile: { full_name: string; cpf: string; phone: string };
+  access: string;
+  refresh: string;
+};
+
+export async function signup(payload: SignupPayload): Promise<SignupResponse> {
+  const res = await fetch(`${API_BASE}/auth/signup/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha no cadastro: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as SignupResponse;
 }

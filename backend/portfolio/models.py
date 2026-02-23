@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 
+
 class Investment(models.Model):
     STATUS_PENDING = "PENDING"
     STATUS_APPROVED = "APPROVED"
