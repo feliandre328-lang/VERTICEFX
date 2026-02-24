@@ -28,10 +28,12 @@ export default function DashboardRoute() {
   const [systemState, setSystemState] = useState<SystemState>(() => FinanceService.getSystemState());
   const access = useMemo(() => localStorage.getItem("access") || "", []);
   const [isPixOpen, setIsPixOpen] = useState(false);
-  const [amountInput, setAmountInput] = useState<string>("300,00");
-  const [amountNumber, setAmountNumber] = useState<number>(MIN_PIX_AMOUNT);
+  const [amountInput, setAmountInput] = useState<string>("500,00");
+  const MIN_PIX = 500;
+  const [amountNumber, setAmountNumber] = useState<number>(MIN_PIX);
   const [saving, setSaving] = useState(false);
   const [pix, setPix] = useState<LocalPixPayload | null>(null);
+
 
   const refreshDashboardSummary = async () => {
     if (!access) return;
@@ -162,12 +164,14 @@ export default function DashboardRoute() {
         loadingPix={saving}
       />
 
+      
+
       <PixModal
         isOpen={isPixOpen}
         onClose={() => setIsPixOpen(false)}
         onGeneratePix={handleGeneratePix}
         onConfirm={handleConfirmPaid}
-        minAmount={MIN_PIX_AMOUNT}
+        minAmount={MIN_PIX}
         amountInput={amountInput}
         onAmountChange={handleAmountChange}
         amountNumber={amountNumber}

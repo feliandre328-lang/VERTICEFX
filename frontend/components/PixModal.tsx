@@ -87,7 +87,7 @@ export default function PixModal({
             <p className="text-xs text-slate-400 mt-1">
               Valor do aporte:{" "}
               <span className="text-slate-200 font-semibold">{formatBRL(amountNumber)}</span>{" "}
-              <span className="text-slate-500">(minimo {formatBRL(minAmount)})</span>
+              <span className="text-slate-500">(minimo {formatBRL(500)})</span>
             </p>
             {externalRef ? <p className="text-[10px] text-slate-500 mt-1">TXID: {externalRef}</p> : null}
           </div>
