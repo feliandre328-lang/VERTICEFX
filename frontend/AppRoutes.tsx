@@ -16,7 +16,7 @@ export default function AppRoutes() {
       <Routes>
         {/* PUBLIC */}
         <Route path="/login" element={<LoginClient />} />
-        <Route path="/admin/login" element={<LoginAdmin />} />
+        <Route path="/backoffice/login" element={<LoginAdmin />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/2fa" element={<TwoFactorAuth />} />
         

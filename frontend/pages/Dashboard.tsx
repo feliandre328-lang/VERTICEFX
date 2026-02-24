@@ -116,14 +116,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-5 flex flex-col justify-center gap-3">
           <div>
-            <label className="block text-[11px] text-slate-400 mb-1">Valor do aporte (min. R$ 300,00)</label>
-            <input
-              value={amountInput}
-              onChange={(e) => setAmountInput(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-200 outline-none focus:border-blue-700"
-              placeholder="300,00"
-              inputMode="decimal"
-            />
+            <label className="block text-[11px] text-slate-400 mb-1">Valor do aporte (min. R$ 500,00)</label>
+            
             <div className="mt-1 text-[10px] text-slate-500">Use virgula: 500,00</div>
           </div>
 

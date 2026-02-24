@@ -27,3 +27,19 @@ dist-ssr
 venv/
 .venv/
 backend_venv/
+/backend_venv
+
+# Django / DB local
+/backend/db.sqlite3
+backend/db.sqlite3
+db.sqlite3
+*.sqlite3
+*.sqlite3-journal
+
+# env
+.env
+*.log
+__pycache__/
+*.pyc
+media/
+staticfiles/

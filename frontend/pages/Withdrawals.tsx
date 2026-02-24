@@ -1,6 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SystemState } from "../types";
-import { Wallet, ShieldCheck, CheckCircle, FileSearch, Calendar as CalendarIcon, Clock } from "lucide-react";
+import {
+  Wallet,
+  ShieldCheck,
+  CheckCircle,
+  FileSearch,
+  Calendar as CalendarIcon,
+  Clock,
+} from "lucide-react";
 import { useAuth } from "../layouts/AuthContext";
 import {
   createWithdrawal,
@@ -20,6 +27,7 @@ const toCurrency = (val: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
 const centsToReais = (cents: number) => cents / 100;
+
 const toInputDate = (value?: string | number) => {
   const d = value ? new Date(value) : new Date();
   if (Number.isNaN(d.getTime())) return "";
@@ -28,6 +36,7 @@ const toInputDate = (value?: string | number) => {
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
+
 const formatDateBR = (value: string) => {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [year, month, day] = value.split("-");
@@ -35,6 +44,7 @@ const formatDateBR = (value: string) => {
   }
   return new Date(value).toLocaleDateString("pt-BR");
 };
+
 const parsePtBrCurrency = (value: string) => {
   if (!value) return 0;
   const normalized = value.replace(/\./g, "").replace(",", ".");
@@ -53,13 +63,57 @@ const statusLabel = (status: string) => {
 const typeLabel = (kind: WithdrawalType) =>
   kind === "CAPITAL_REDEMPTION" ? "Resgate de Capital" : "Liquidação de Resultados";
 
+/** ---------- Regras de data (FRONT) ---------- **/
+
+// Evita bug de timezone: sempre interpreta yyyy-mm-dd como "meia-noite local"
+const asLocalDate = (yyyyMmDd: string) => new Date(`${yyyyMmDd}T00:00:00`);
+
+const isFridayInput = (yyyyMmDd: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(yyyyMmDd)) return false;
+  return asLocalDate(yyyyMmDd).getDay() === 5; // 5 = sexta (JS)
+};
+
+const maxDateStr = (a: string, b?: string | null) => {
+  if (!b) return a;
+  return a > b ? a : b; // yyyy-mm-dd compara lexicograficamente OK
+};
+
+// Próxima sexta a partir de hoje (se hoje for sexta, pega a próxima semana)
+const getNextFridayFromToday = () => {
+  const today = new Date();
+  const day = today.getDay(); // 0..6
+  const diff = ((5 - day + 7) % 7) || 7;
+  const friday = new Date(today);
+  friday.setDate(today.getDate() + diff);
+  return toInputDate(friday.getTime());
+};
+
+// Primeira sexta >= startYmd (se start já for sexta e includeIfFriday=true, retorna start)
+const nextFridayFrom = (startYmd: string, includeIfFriday = true) => {
+  const start = asLocalDate(startYmd);
+  const day = start.getDay(); // 0..6
+  let diff = (5 - day + 7) % 7; // sexta = 5
+  if (!includeIfFriday && diff === 0) diff = 7;
+  const d = new Date(start);
+  d.setDate(start.getDate() + diff);
+  return toInputDate(d.getTime());
+};
+
 const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
   const { getAccessToken } = useAuth();
+  const access = useMemo(() => getAccessToken(), [getAccessToken]);
+
   const todayDate = useMemo(() => toInputDate(Date.now()), []);
+  const nextFriday = useMemo(() => getNextFridayFromToday(), []);
 
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"CAPITAL" | "RESULT">("RESULT");
-  const [scheduledDate, setScheduledDate] = useState(todayDate);
+
+  // ✅ Regra “ao contrário”:
+  // - RESULT: usuário escolhe a sexta (input aparece)
+  // - CAPITAL: data automática (sem input)
+  const [scheduledDate, setScheduledDate] = useState(nextFriday);
+
   const [summary, setSummary] = useState<WithdrawalSummary | null>(null);
   const [items, setItems] = useState<WithdrawalItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,8 +121,6 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const summaryRequestSeq = useRef(0);
-
-  const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
   async function loadWithdrawalData(
     referenceDate?: string,
@@ -87,9 +139,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
       ]);
       if (requestSeq !== summaryRequestSeq.current) return;
       setSummary(summaryData);
-      if (withdrawalsData) {
-        setItems(withdrawalsData);
-      }
+      if (withdrawalsData) setItems(withdrawalsData);
     } catch (err: any) {
       if (requestSeq !== summaryRequestSeq.current) return;
       setErrorMsg(err?.message ?? "Falha ao carregar dados de resgate.");
@@ -107,19 +157,35 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
   }, [access, type, initialized]);
 
   useEffect(() => {
-    const onNotif = () => {
-      loadWithdrawalData(undefined, { silent: true });
-    };
+    const onNotif = () => loadWithdrawalData(undefined, { silent: true });
     window.addEventListener("vfx:notifications:new", onNotif);
     return () => window.removeEventListener("vfx:notifications:new", onNotif);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access, type]);
 
+  // Data mínima para CAPITAL = maior entre hoje e cutoff (90 dias do 1º aporte)
+  const capitalMinDate = useMemo(() => {
+    return maxDateStr(todayDate, summary?.capital_cutoff_date ?? null);
+  }, [todayDate, summary?.capital_cutoff_date]);
+
+  // ✅ CAPITAL: data automática (próxima sexta >= capitalMinDate)
   useEffect(() => {
-    if (scheduledDate < todayDate) {
-      setScheduledDate(todayDate);
+    if (type === "CAPITAL") {
+      setErrorMsg("");
+      setScheduledDate(nextFridayFrom(capitalMinDate, true));
     }
-  }, [scheduledDate, todayDate]);
+  }, [type, capitalMinDate]);
+
+  // ✅ RESULT: default quando muda para RESULT -> próxima sexta
+  useEffect(() => {
+    if (type === "RESULT") {
+      setErrorMsg("");
+      if (!scheduledDate || !isFridayInput(scheduledDate) || scheduledDate < nextFriday) {
+        setScheduledDate(nextFriday);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, nextFriday]);
 
   const maxAvailable =
     type === "CAPITAL"
@@ -130,7 +196,9 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
     type === "CAPITAL"
       ? centsToReais(summary?.available_capital_cents ?? 0)
       : centsToReais(summary?.available_result_cents ?? 0);
+
   const amountValue = parsePtBrCurrency(amount);
+
   const handleAmountChange = (raw: string) => {
     const digits = raw.replace(/\D/g, "");
     if (!digits) {
@@ -141,18 +209,32 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
     setAmount(value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   };
 
+  const scheduledIsValid =
+    type === "CAPITAL"
+      ? !!scheduledDate && isFridayInput(scheduledDate) && scheduledDate >= capitalMinDate
+      : !!scheduledDate && isFridayInput(scheduledDate) && scheduledDate >= nextFriday;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amountValue || !access) return;
 
+    // trava final no front
+    if (!scheduledIsValid) {
+      setErrorMsg("Escolha uma sexta-feira válida para agendar.");
+      return;
+    }
+
     try {
       setSubmitting(true);
       setErrorMsg("");
+
       await createWithdrawal(access, {
         withdrawal_type: type === "CAPITAL" ? "CAPITAL_REDEMPTION" : "RESULT_SETTLEMENT",
         amount: amountValue,
-        scheduled_for: type === "CAPITAL" ? scheduledDate : undefined,
+        // ✅ Agora sempre manda scheduled_for (CAPITAL é automático; RESULT escolhido)
+        scheduled_for: scheduledDate,
       });
+
       setAmount("");
       await loadWithdrawalData(undefined, { silent: true });
     } catch (err: any) {
@@ -168,7 +250,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
         <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
           <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
             <Wallet className="text-slate-400" size={20} />
-            Solicitar Resgate
+            Solicitar Resgate/Saque
           </h3>
 
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -183,8 +265,9 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
                   : "bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-700"
               }`}
             >
-              Liquidação de Resultados
+              Saque Semanal
             </button>
+
             <button
               onClick={() => {
                 setType("CAPITAL");
@@ -202,12 +285,25 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
 
           <div className="mb-6 p-4 bg-slate-950 rounded border border-slate-800">
             <p className="text-xs text-slate-500 mb-1 uppercase tracking-wider">
-              {type === "CAPITAL" ? "Capital Disponivel Total" : "Saldo de Resultados Disponivel"}
+              {type === "CAPITAL" ? "Capital Disponível Total" : "Saldo de Resultados Disponível"}
             </p>
             <p className="text-xl font-bold text-white">{toCurrency(displayAvailable)}</p>
+
             {type === "CAPITAL" && summary?.capital_cutoff_date && (
               <p className="text-[11px] text-slate-600 mt-1">
                 Corte de capital para resgate: {formatDateBR(summary.capital_cutoff_date)}.
+              </p>
+            )}
+
+            {type === "CAPITAL" && (
+              <p className="text-[11px] text-slate-600 mt-1">
+                Data automática: {scheduledDate ? formatDateBR(scheduledDate) : "-"} (próxima sexta após o prazo).
+              </p>
+            )}
+
+            {type === "RESULT" && (
+              <p className="text-[11px] text-slate-600 mt-1">
+                Escolha uma sexta-feira (mínimo {formatDateBR(nextFriday)}).
               </p>
             )}
           </div>
@@ -238,24 +334,47 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
                 </div>
               </div>
 
-              <div className="col-span-2 sm:col-span-1">
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                  Data do Agendamento
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-3 text-slate-500 pointer-events-none">
-                    <CalendarIcon size={16} />
-                  </span>
-                  <input
-                    type="date"
-                    value={scheduledDate}
-                    min={todayDate}
-                    onChange={(e) => setScheduledDate(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 focus:ring-1 focus:ring-blue-900 [color-scheme:dark]"
-                    required
-                  />
+              {/* ✅ AO CONTRÁRIO: input de data aparece só no RESULT */}
+              {type === "RESULT" && (
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    Agendamento
+                    <small>(toda sexta-feira)</small>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-3 text-slate-500 pointer-events-none">
+                      <CalendarIcon size={16} />
+                    </span>
+                    <input
+                      type="date"
+                      value={scheduledDate}
+                      min={nextFriday}
+                      onChange={(e) => {
+                        const value = e.target.value;
+
+                        if (!value) return;
+
+                        // bloqueia qualquer dia que não seja sexta
+                        if (!isFridayInput(value)) {
+                          setErrorMsg("Só é permitido agendar em uma sexta-feira.");
+                          return;
+                        }
+
+                        // bloqueia datas anteriores à próxima sexta
+                        if (value < nextFriday) {
+                          setErrorMsg(`Escolha uma sexta a partir de ${formatDateBR(nextFriday)}.`);
+                          return;
+                        }
+
+                        setErrorMsg("");
+                        setScheduledDate(value);
+                      }}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 focus:ring-1 focus:ring-blue-900 [color-scheme:dark]"
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="bg-blue-900/10 border border-blue-900/30 rounded p-4 flex gap-3 items-start">
@@ -263,7 +382,8 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
               <div className="text-xs text-blue-300/80 space-y-1 leading-relaxed">
                 <p>Todas as solicitações passam por análise preventiva e validação operacional.</p>
                 <p className="mt-2">
-                  <strong>Prazo Operacional:</strong> D+3 (3 dias úteis) a partir da data agendada.
+                  <strong>Saque Semanal</strong>: agendar apenas em sextas-feiras (usuário escolhe a sexta).{" "}
+                  <strong>Resgate de Capital</strong>: data automática (sexta) e somente após 90 dias do primeiro aporte.
                 </p>
               </div>
             </div>
@@ -276,7 +396,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
                 !amount ||
                 amountValue <= 0 ||
                 amountValue > maxAvailable ||
-                (type === "CAPITAL" && !scheduledDate)
+                !scheduledIsValid
               }
               className="w-full py-3 bg-slate-100 hover:bg-white disabled:bg-slate-800 disabled:text-slate-600 text-slate-900 font-bold rounded-lg transition-all"
             >
@@ -291,6 +411,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
           <h4 className="text-sm font-bold text-white mb-4 uppercase tracking-wider">Etapas do Processo</h4>
           <ul className="space-y-6 relative">
             <div className="absolute left-3.5 top-0 h-full w-px bg-slate-800 z-0"></div>
+
             <li className="flex gap-4 relative z-10">
               <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-400">
                 1
@@ -300,6 +421,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
                 <p className="text-xs text-slate-500">O usuário formaliza o pedido na plataforma.</p>
               </div>
             </li>
+
             <li className="flex gap-4 relative z-10">
               <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-400">
                 2
@@ -309,6 +431,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
                 <p className="text-xs text-slate-500">Validação de titularidade e origem dos fundos.</p>
               </div>
             </li>
+
             <li className="flex gap-4 relative z-10">
               <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-400">
                 3
@@ -325,6 +448,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
           <div className="p-4 bg-slate-950/30 border-b border-slate-800">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Status das Solicitações</h4>
           </div>
+
           <div className="p-4 space-y-3">
             {loading ? (
               <p className="text-center text-slate-500 text-xs py-2">Carregando...</p>
@@ -344,6 +468,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
                     ) : (
                       <Clock size={16} className="text-slate-500" />
                     )}
+
                     <div>
                       <p className="text-xs text-slate-300 font-medium">
                         {typeLabel(item.withdrawal_type)} - {statusLabel(item.status)}
@@ -353,7 +478,10 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
                       </p>
                     </div>
                   </div>
-                  <span className="text-slate-300 text-sm font-medium">{toCurrency(centsToReais(item.amount_cents))}</span>
+
+                  <span className="text-slate-300 text-sm font-medium">
+                    {toCurrency(centsToReais(item.amount_cents))}
+                  </span>
                 </div>
               ))
             )}
@@ -365,4 +493,3 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
 };
 
 export default Withdrawals;
-

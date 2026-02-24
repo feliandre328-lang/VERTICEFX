@@ -136,20 +136,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access]);
 
-  // Animate Forex Exposure (mantém igual)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const fluctuation = Math.random() * 2 - 1;
-      setForexExposure((prev) => {
-        let newValue = prev + fluctuation * 0.25;
-        if (newValue > 66) newValue = 66;
-        if (newValue < 64) newValue = 64;
-        return newValue;
-      });
-    }, 2500);
-    return () => clearInterval(interval);
-  }, []);
-
+  
   const handlePerformanceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const percent = parseFloat(performanceInput);
@@ -294,7 +281,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const pendingCount = safeNumber(adminSummary?.pending_count, 0);
 
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard
           label="Total Sob Gestão (TVL)"
           value={
@@ -312,15 +299,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           subValue={`${pendingCount} pendentes`}
           icon={AlertCircle}
           color="amber"
-        />
-
-        <StatCard
-          label="Exposição Cambial"
-          value={`${forexExposure.toFixed(2)}%`}
-          subValue="Alocação em USD"
-          icon={Globe}
-          color="purple"
-          isAnimated={true}
         />
 
         <StatCard
