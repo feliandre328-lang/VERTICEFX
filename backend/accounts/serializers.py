@@ -30,7 +30,7 @@ class SignupSerializer(serializers.Serializer):
     password2 = serializers.CharField(write_only=True, min_length=6)
 
     full_name = serializers.CharField(max_length=150)
-    cpf = serializers.CharField(max_length=11)
+    cpf = serializers.CharField(max_length=14)
     phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     dob = serializers.DateField(required=False, allow_null=True)
 

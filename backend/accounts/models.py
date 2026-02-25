@@ -10,9 +10,7 @@ def clean_cpf(value: str) -> str:
     return re.sub(r"\D", "", value or "")
 
 
-def is_valid_cpf(value: str) -> bool:
-    cpf = clean_cpf(value)
-
+def is_valid_cpf(cpf: str) -> bool:
     if len(cpf) != 11:
         return False
     if cpf == cpf[0] * 11:
@@ -27,12 +25,10 @@ def is_valid_cpf(value: str) -> bool:
     d2 = calc_digit(cpf[:10])
     return cpf[-2:] == f"{d1}{d2}"
 
-
 def validate_cpf(value: str):
     cpf = clean_cpf(value)
     if not is_valid_cpf(cpf):
         raise ValidationError("CPF inválido.")
-
 
 class AccountProfile(models.Model):
     user = models.OneToOneField(
@@ -46,7 +42,7 @@ class AccountProfile(models.Model):
 
     # CPF obrigatório: somente números, único
     cpf = models.CharField(
-        max_length=11,
+        max_length=14,
         unique=True,
         db_index=True,
         validators=[validate_cpf],

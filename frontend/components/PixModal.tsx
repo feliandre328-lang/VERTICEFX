@@ -120,7 +120,7 @@ export default function PixModal({
             </button>
 
             <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
-              Dica: digite com virgula (ex: <b>300,00</b>). O QR e o copia e cola sao gerados localmente.
+              Dica: digite com virgula (ex: <b>500,00</b>). O QR e o copia e cola sao gerados abaixo.
             </p>
           </div>
 

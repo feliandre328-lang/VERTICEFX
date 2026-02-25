@@ -62,20 +62,25 @@ class AdminClientsView(APIView):
         return Response(out)
 
 
+from django.db.models import Sum
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAdminUser
+
+# ... seus imports: User, Investment, WithdrawalRequest, etc.
+
 class AdminClientStatementView(APIView):
-    """
-    Admin: extrato de 1 cliente
-    - investments (aportes)
-    - withdrawal_requests (resgates)
-    - totais (investido, resgatado, saldo)
-    """
     permission_classes = [IsAdminUser]
 
     def get(self, request, user_id: int):
         try:
-            u = User.objects.get(id=user_id)
+            # ✅ puxa o OneToOne junto
+            u = User.objects.select_related("account_profile").get(id=user_id)
         except User.DoesNotExist:
             return Response({"detail": "Cliente não encontrado."}, status=404)
+
+        # ✅ profile (pode não existir em usuários antigos)
+        profile = getattr(u, "account_profile", None)
 
         inv_qs = Investment.objects.filter(user=u).order_by("-created_at")
         wd_qs = WithdrawalRequest.objects.filter(user=u).order_by("-requested_at")
@@ -89,7 +94,7 @@ class AdminClientStatementView(APIView):
         balance_cents = invested_cents - withdrawn_cents
 
         investments = list(
-            inv_qs.values("id", "amount_cents", "status", "created_at", "external_ref")
+            inv_qs.values("id", "amount_cents", "status", "created_at", "external_ref", "paid_at")
         )
 
         withdrawals = list(
@@ -120,6 +125,20 @@ class AdminClientStatementView(APIView):
                     "is_active": getattr(u, "is_active", True),
                     "date_joined": getattr(u, "date_joined", None),
                 },
+                # ✅ AGORA O FRONTEND VAI RECEBER O PROFILE
+                "profile": {
+                    "full_name": getattr(profile, "full_name", None),
+                    "cpf": getattr(profile, "cpf", None),
+                    "phone": getattr(profile, "phone", None),
+                    "dob": getattr(profile, "dob", None),
+                    "zip_code": getattr(profile, "zip_code", None),
+                    "street": getattr(profile, "street", None),
+                    "number": getattr(profile, "number", None),
+                    "complement": getattr(profile, "complement", None),
+                    "neighborhood": getattr(profile, "neighborhood", None),
+                    "city": getattr(profile, "city", None),
+                    "state": getattr(profile, "state", None),
+                } if profile else None,
                 "totals": {
                     "invested_cents": invested_cents,
                     "withdrawn_cents": withdrawn_cents,

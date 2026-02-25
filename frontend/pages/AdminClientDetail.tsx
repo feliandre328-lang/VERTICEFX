@@ -18,6 +18,10 @@ import {
 import { useAuth } from "../layouts/AuthContext";
 import { API_BASE } from "../services/api"; // se no seu projeto API_BASE não é exportado, veja nota abaixo
 
+
+
+
+
 // -------- Types (igual o backend retorna) --------
 type ClientStatement = {
   user: {
@@ -27,7 +31,7 @@ type ClientStatement = {
     is_active: boolean;
     date_joined: string;
   };
-  profile: null | {
+  profile: {
     full_name?: string;
     cpf?: string;
     phone?: string;
@@ -157,6 +161,8 @@ export default function AdminClientDetail() {
   const u = data?.user;
   const p = data?.profile;
 
+  
+
   const statusLabel = (status: string) => {
     const s = (status || "").toUpperCase();
     if (s === "APPROVED") return badge("Aprovado", "ok");
@@ -226,6 +232,9 @@ export default function AdminClientDetail() {
                   <p className="text-xs text-slate-500 uppercase tracking-wider">Cliente</p>
                   <p className="text-white font-bold text-lg truncate">{p?.full_name || u.username}</p>
                   <p className="text-[12px] text-slate-400 font-mono">ID #{u.id}</p>
+                  <div className="mt-4 text-xs text-slate-500">
+                Nascimento: <span className="text-slate-300">{p?.dob ? new Date(p.dob).toLocaleDateString("pt-BR") : "—"}</span>
+              </div>
                 </div>
                 <div className="shrink-0">
                   {u.is_active ? badge("Ativo", "ok") : badge("Inativo", "bad")}
@@ -235,7 +244,7 @@ export default function AdminClientDetail() {
               <div className="mt-4 space-y-2 text-sm">
                 <div className="flex items-center gap-2 text-slate-300">
                   <Mail size={14} className="text-slate-500" />
-                  <span className="truncate">{u.email || "sem-email"}</span>
+                  <span className="truncate">{ u.username || "sem-email"}</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-slate-300">
@@ -278,9 +287,7 @@ export default function AdminClientDetail() {
                 </div>
               </div>
 
-              <div className="mt-4 text-xs text-slate-500">
-                Nascimento: <span className="text-slate-300">{p?.dob ? new Date(p.dob).toLocaleDateString("pt-BR") : "—"}</span>
-              </div>
+              
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">

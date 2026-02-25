@@ -28,8 +28,8 @@ venv/
 .venv/
 backend_venv/
 /backend_venv
-backend_prod_venv/
-/backend_prod_venv
+#backend_prod_venv/
+#/backend_prod_venv
 
 # Django / DB local
 /backend/db.sqlite3
