@@ -19,6 +19,7 @@ from .serializers import (
 from .mp_service import mp_create_pix_payment
 from notifications.models import Notification
 from notifications.services import create_notification, notify_admins
+from withdrawals.models import WithdrawalRequest
 
 
 class InvestmentViewSet(viewsets.ModelViewSet):
@@ -213,7 +214,7 @@ class AdminSummaryView(APIView):
     GET /api/admin/summary/
 
     Retorna:
-    - tvl_approved_cents: soma de TODOS os aportes APROVADOS (todos os usuários)
+    - tvl_cents: aportes APROVADOS menos retiradas (resgates/saques não rejeitados)
     - pending_cents: soma de TODOS os aportes PENDENTES
     - approved_count / pending_count
     """
@@ -243,11 +244,18 @@ class AdminSummaryView(APIView):
             .aggregate(c=Count("id"))["c"]
             or 0
         )
-        
+
+        withdrawals_sum = (
+            WithdrawalRequest.objects.exclude(status=WithdrawalRequest.STATUS_REJECTED)
+            .aggregate(s=Sum("amount_cents"))["s"]
+            or 0
+        )
+        tvl_net = max(tvl_approved - withdrawals_sum, 0)
 
         return Response(
             {
-                "tvl_cents": tvl_approved,
+                "tvl_cents": tvl_net,
+                "withdrawals_cents": withdrawals_sum,
                 "pending_cents": pending_sum,
                 "approved_count": approved_count,
                 "pending_count": pending_count,

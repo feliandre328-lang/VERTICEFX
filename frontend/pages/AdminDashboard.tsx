@@ -676,10 +676,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const renderAdminNavTabs = () => {
     const tabs = [
-      { id: "admin-dashboard", label: "Geral", icon: Globe },
-      { id: "admin-withdrawals", label: "Resgates", icon: AlertCircle },
-      { id: "admin-performance", label: "Performance", icon: Activity },
-      { id: "admin-compliance", label: "KYC", icon: UserCheck },
+      { id: "admin-dashboard", route: "admin/dashboard", label: "Geral", icon: Globe },
+      { id: "admin-withdrawals", route: "admin/withdrawals", label: "Resgates", icon: AlertCircle },
+      { id: "admin-performance", route: "admin/performance", label: "Performance", icon: Activity },
+      { id: "admin-compliance", route: "admin/clients", label: "KYC", icon: UserCheck },
     ];
 
     return (
@@ -689,7 +689,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => onNavigate(tab.id)}
+                onClick={() => onNavigate(tab.route)}
                 className={`${
                   view === tab.id
                     ? "border-blue-500 text-blue-400"

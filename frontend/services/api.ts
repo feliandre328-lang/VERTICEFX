@@ -527,7 +527,29 @@ export async function listAdminInvestments(
     throw new Error(`Falha ao listar admin investments: ${res.status} ${formatError(res.status, raw, json)}`);
   }
 
-  return (json ?? []) as AdminInvestmentItem[];
+  const normalize = (item: any): AdminInvestmentItem => ({
+    ...item,
+    amount_cents: Number(item?.amount_cents ?? 0),
+  });
+
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(
+        `Falha ao listar admin investments: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`
+      );
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
 }
 
 export async function approveInvestment(access: string, id: number | string) {
@@ -561,7 +583,8 @@ export async function rejectInvestment(access: string, id: number | string) {
 }
 
 export type AdminSummary = {
-  tvl_approved_cents: number;
+  tvl_cents: number;
+  withdrawals_cents?: number;
   pending_cents: number;
   approved_count: number;
   pending_count: number;
@@ -662,8 +685,12 @@ export type AdminWithdrawalItem = {
   paid_at: string | null;
 };
 
-export async function listAdminWithdrawals(access: string, status?: string): Promise<AdminWithdrawalItem[]> {
-  const url = withQuery(`${API_BASE}/admin/withdrawals/`, { status });
+export async function listAdminWithdrawals(
+  access: string,
+  status?: string,
+  withdrawalType?: "RESULT_SETTLEMENT" | "CAPITAL_REDEMPTION" | string
+): Promise<AdminWithdrawalItem[]> {
+  const url = withQuery(`${API_BASE}/admin/withdrawals/`, { status, withdrawal_type: withdrawalType });
   const res = await fetch(url, {
     headers: authHeaders(access),
   });
@@ -671,7 +698,26 @@ export async function listAdminWithdrawals(access: string, status?: string): Pro
   if (!res.ok) {
     throw new Error(`Falha ao listar resgates admin: ${res.status} ${formatError(res.status, raw, json)}`);
   }
-  return (json ?? []) as AdminWithdrawalItem[];
+  const normalize = (item: any): AdminWithdrawalItem => ({
+    ...item,
+    amount_cents: Number(item?.amount_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(`Falha ao listar resgates admin: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`);
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
 }
 
 export async function approveAdminWithdrawal(access: string, id: number | string): Promise<AdminWithdrawalItem> {
@@ -703,6 +749,26 @@ export async function rejectAdminWithdrawal(
   const { raw, json } = await readBodyOnce(res);
   if (!res.ok) {
     throw new Error(`Falha ao rejeitar resgate: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as AdminWithdrawalItem;
+}
+
+export async function payAdminWithdrawal(
+  access: string,
+  id: number | string,
+  data?: { external_ref?: string; admin_note?: string }
+): Promise<AdminWithdrawalItem> {
+  const res = await fetch(`${API_BASE}/admin/withdrawals/${id}/pay/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify(data ?? {}),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao pagar resgate: ${res.status} ${formatError(res.status, raw, json)}`);
   }
   return json as AdminWithdrawalItem;
 }
