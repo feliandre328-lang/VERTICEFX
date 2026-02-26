@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { UserRole } from "../types";
 import { fetchMe, login as apiLogin, Me } from "../services/api";
 
@@ -46,6 +46,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setIsAuthenticated(false);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onUnauthorized = () => clearSession();
+    window.addEventListener("vfx:auth:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("vfx:auth:unauthorized", onUnauthorized);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loginClient = async (username: string, password: string) => {
     const tokens = await apiLogin(username, password);

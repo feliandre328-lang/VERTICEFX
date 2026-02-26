@@ -10,6 +10,16 @@ export const API_BASE: string = import.meta.env.VITE_API_BASE ?? "/api";
 type ApiError = { detail?: string; message?: string; [k: string]: any };
 
 async function readBodyOnce(res: Response): Promise<{ raw: string; json: any | null }> {
+  if (res.status === 401) {
+    try {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("vfx:auth:unauthorized"));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const raw = await res.text(); // ✅ lê 1 vez apenas
   try {
     return { raw, json: raw ? JSON.parse(raw) : null };
@@ -41,6 +51,12 @@ function withQuery(path: string, params?: Record<string, string | number | boole
   for (const [k, v] of entries) qs.set(k, String(v));
 
   return `${path}${path.includes("?") ? "&" : "?"}${qs.toString()}`;
+}
+
+function asList<T>(json: any): T[] {
+  if (Array.isArray(json)) return json as T[];
+  if (json && Array.isArray(json.results)) return json.results as T[];
+  return [];
 }
 
 // -------------------- AUTH -------------------- //
@@ -183,8 +199,26 @@ export async function listInvestments(access: string): Promise<InvestmentItem[]>
   if (!res.ok) {
     throw new Error(`Falha ao listar aportes: ${res.status} ${formatError(res.status, raw, json)}`);
   }
+  const normalize = (item: any): InvestmentItem => ({
+    ...item,
+    amount_cents: Number(item?.amount_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
 
-  return (json ?? []) as InvestmentItem[];
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(`Falha ao listar aportes: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`);
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
 }
 
 // -------------------- SUMMARY -------------------- //
@@ -211,8 +245,17 @@ export async function getMeSummary(access: string) {
 export type WithdrawalSummary = {
   available_capital_cents: number;
   available_result_cents: number;
+  investments_total_cents: number;
   approved_capital_cents: number;
+  liquid_capital_cents: number;
+  capital_reserved_cents: number;
+  capital_reserved_total_cents: number;
+  daily_distribution_total_cents: number;
   result_ledger_cents: number;
+  result_reserved_cents: number;
+  result_reserved_total_cents: number;
+  withdrawals_total_cents: number;
+  statement_net_cents: number;
   pending_capital_cents: number;
   pending_result_cents: number;
   capital_cutoff_date: string;
@@ -257,7 +300,26 @@ export async function listWithdrawals(access: string): Promise<WithdrawalItem[]>
   if (!res.ok) {
     throw new Error(`Falha ao listar resgates: ${res.status} ${formatError(res.status, raw, json)}`);
   }
-  return (json ?? []) as WithdrawalItem[];
+  const normalize = (item: any): WithdrawalItem => ({
+    ...item,
+    amount_cents: Number(item?.amount_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(`Falha ao listar resgates: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`);
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
 }
 
 export async function createWithdrawal(
@@ -328,7 +390,33 @@ export async function listDailyPerformanceDistributions(access: string): Promise
       `Falha ao listar distribuicoes de performance: ${res.status} ${formatError(res.status, raw, json)}`
     );
   }
-  return (json ?? []) as DailyPerformanceDistribution[];
+  const normalize = (item: any): DailyPerformanceDistribution => ({
+    ...item,
+    result_cents: Number(item?.result_cents ?? 0),
+    base_capital_cents: Number(item?.base_capital_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(
+        `Falha ao listar distribuicoes de performance: ${pageRes.status} ${formatError(
+          pageRes.status,
+          pageRaw,
+          pageJson
+        )}`
+      );
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
 }
 
 // -------------------- REFERRALS -------------------- //

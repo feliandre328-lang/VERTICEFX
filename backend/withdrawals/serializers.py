@@ -80,17 +80,17 @@ class WithdrawalRequestSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"scheduled_for": "scheduled_for é obrigatório para resgate de capital."}
                 )
-            if scheduled_for > today:
-                raise serializers.ValidationError(
-                    {"scheduled_for": f"Resgate de capital permitido somente até hoje ({today.isoformat()})."}
-                )
+            
+
+            
             balances = get_user_withdrawal_balances(request.user, reference_date=scheduled_for)
             if cents > balances["available_capital_cents"]:
+                available_reais = Decimal(balances["available_capital_cents"]) / Decimal("100")
                 raise serializers.ValidationError(
                     {
                         "amount": (
                             f"Saldo de capital insuficiente. Disponivel: "
-                            f"{balances['available_capital_cents']} cents."
+                            f"R$ {available_reais:.2f}."
                         )
                     }
                 )
@@ -98,11 +98,12 @@ class WithdrawalRequestSerializer(serializers.ModelSerializer):
         if attrs["withdrawal_type"] == WithdrawalRequest.TYPE_RESULT_SETTLEMENT:
             balances = get_user_withdrawal_balances(request.user, reference_date=today)
             if cents > balances["available_result_cents"]:
+                available_reais = Decimal(balances["available_result_cents"]) / Decimal("100")
                 raise serializers.ValidationError(
                     {
                         "amount": (
                             f"Saldo de resultado insuficiente. Disponivel: "
-                            f"{balances['available_result_cents']} cents."
+                            f"R$ {available_reais:.2f}."
                         )
                     }
                 )
@@ -252,11 +253,34 @@ class DailyPerformanceDistributionCreateSerializer(serializers.Serializer):
             .annotate(base_capital_cents=Sum("amount_cents"))
         )
 
+        capital_out_rows = (
+            WithdrawalRequest.objects.filter(
+                withdrawal_type=WithdrawalRequest.TYPE_CAPITAL_REDEMPTION,
+                status__in=[
+                    WithdrawalRequest.STATUS_PENDING,
+                    WithdrawalRequest.STATUS_APPROVED,
+                    WithdrawalRequest.STATUS_PAID,
+                ],
+            )
+            .filter(user_filter)
+            .filter(
+                Q(scheduled_for__lte=ref_date)
+                | Q(scheduled_for__isnull=True, requested_at__date__lte=ref_date)
+            )
+            .values("user")
+            .annotate(capital_out_cents=Sum("amount_cents"))
+        )
+        capital_out_by_user = {
+            int(item["user"]): int(item["capital_out_cents"] or 0)
+            for item in capital_out_rows
+        }
+
         created = []
         percent_factor = Decimal(perf) / Decimal("100")
 
         for row in rows:
-            base_cents = int(row["base_capital_cents"] or 0)
+            user_row_id = int(row["user"])
+            base_cents = int(row["base_capital_cents"] or 0) - capital_out_by_user.get(user_row_id, 0)
             if base_cents <= 0:
                 continue
 
@@ -264,8 +288,8 @@ class DailyPerformanceDistributionCreateSerializer(serializers.Serializer):
             if result_cents == 0:
                 continue
 
-            dist, _ = DailyPerformanceDistribution.objects.update_or_create(
-                user_id=row["user"],
+            dist, created_dist = DailyPerformanceDistribution.objects.get_or_create(
+                user_id=user_row_id,
                 reference_date=ref_date,
                 defaults={
                     "performance_percent": perf,
@@ -275,16 +299,42 @@ class DailyPerformanceDistributionCreateSerializer(serializers.Serializer):
                     "created_by": request.user,
                 },
             )
+            if not created_dist:
+                dist.performance_percent = perf
+                dist.base_capital_cents = base_cents
+                dist.result_cents = int(dist.result_cents or 0) + result_cents
+                if note:
+                    dist.note = note
+                dist.created_by = request.user
+                dist.save(
+                    update_fields=[
+                        "performance_percent",
+                        "base_capital_cents",
+                        "result_cents",
+                        "note",
+                        "created_by",
+                    ]
+                )
 
-            ResultLedgerEntry.objects.update_or_create(
-                user_id=row["user"],
-                external_ref=f"perf-{ref_date.isoformat()}",
-                defaults={
-                    "amount_cents": result_cents,
-                    "description": f"Distribuicao diaria de performance {ref_date.isoformat()}",
-                    "created_by": request.user,
-                },
+            perf_ref = f"perf-{ref_date.isoformat()}"
+            ledger = (
+                ResultLedgerEntry.objects.filter(user_id=user_row_id, external_ref=perf_ref)
+                .order_by("-id")
+                .first()
             )
+            if ledger:
+                ledger.amount_cents = int(ledger.amount_cents or 0) + result_cents
+                ledger.description = f"Distribuicao diaria de performance {ref_date.isoformat()}"
+                ledger.created_by = request.user
+                ledger.save(update_fields=["amount_cents", "description", "created_by"])
+            else:
+                ResultLedgerEntry.objects.create(
+                    user_id=user_row_id,
+                    external_ref=perf_ref,
+                    amount_cents=result_cents,
+                    description=f"Distribuicao diaria de performance {ref_date.isoformat()}",
+                    created_by=request.user,
+                )
             create_notification(
                 user=dist.user,
                 category=Notification.CATEGORY_PERFORMANCE,

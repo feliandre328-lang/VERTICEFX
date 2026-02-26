@@ -364,7 +364,7 @@ main(){
   echo "  curl -I http://${SERVER_NAME}/api/auth/token/"
   echo
   echo "Logs uteis:"
-  echo "  sudo journalctl -u gunicorn -n 120 --no-pager"
+  echo "  "
   echo "  sudo tail -n 120 /var/log/nginx/error.log"
 }
 

@@ -6,7 +6,10 @@ import PixModal from "../components/PixModal";
 
 import * as FinanceService from "../services/financialService";
 import { SystemState } from "../types";
-import { createInvestment, getDashboardSummary, listDailyPerformanceDistributions } from "../services/api";
+import {
+  createInvestment,
+  getWithdrawalSummary,
+} from "../services/api";
 import { generatePIXCode } from "../services/pixService";
 
 const MIN_PIX_AMOUNT = 300;
@@ -38,18 +41,15 @@ export default function DashboardRoute() {
   const refreshDashboardSummary = async () => {
     if (!access) return;
     try {
-      const [sum, distributions] = await Promise.all([
-        getDashboardSummary(access),
-        listDailyPerformanceDistributions(access),
-      ]);
-      const balanceCapital = (sum.balance_capital_cents || 0) / 100;
-      const balanceResults =
-        (distributions ?? []).reduce((acc, item) => acc + (item.result_cents || 0), 0) / 100;
+      const wd = await getWithdrawalSummary(access);
+      const balanceCapital = Number(wd.statement_net_cents || 0) / 100;
+      const balanceResults = Number(wd.daily_distribution_total_cents || 0) / 100;
+      const totalContributed = balanceCapital - balanceResults;
       setSystemState((prev) => ({
         ...prev,
         balanceCapital,
         balanceResults,
-        totalContributed: balanceCapital,
+        totalContributed,
       }));
     } catch (e) {
       console.warn("Resumo do dashboard falhou:", e);

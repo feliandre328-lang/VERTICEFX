@@ -17,6 +17,8 @@ import { useAuth } from "../layouts/AuthContext";
 import {
   createDailyPerformanceDistribution,
   listAdminInvestments,
+  listAdminWithdrawals,
+  type AdminWithdrawalItem,
   approveInvestment,
   rejectInvestment,
   getAdminSummary,
@@ -62,6 +64,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // ✅ Banco (admin)
   const [adminItems, setAdminItems] = useState<AdminInvestmentItem[]>([]);
+  const [adminWithdrawals, setAdminWithdrawals] = useState<AdminWithdrawalItem[]>([]);
   const [adminSummary, setAdminSummary] = useState<{
     tvl_cents: number;
     pending_cents: number;
@@ -103,7 +106,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setErrMsg("");
 
       // pega tudo
-      const data = (await listAdminInvestments(access)) as AdminInvestmentItem[];
+      const [investmentsData, withdrawalsData] = await Promise.all([
+        listAdminInvestments(access),
+        listAdminWithdrawals(access),
+      ]);
+      const data = investmentsData as AdminInvestmentItem[];
+      setAdminWithdrawals(withdrawalsData ?? []);
 
       // ✅ ordena do mais antigo -> mais novo (menor data/hora primeiro)
       const sorted = [...data].sort(
@@ -237,7 +245,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const eligibleClients = useMemo(() => {
     const grouped = new Map<
       number,
-      { user_id: number; username: string; email: string; approved_cents: number }
+      { user_id: number; username: string; email: string; approved_cents: number; capital_out_cents: number }
     >();
 
     for (const inv of adminItems) {
@@ -249,15 +257,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         username: inv.user_username || `user-${inv.user_id}`,
         email: inv.user_email || "",
         approved_cents: 0,
+        capital_out_cents: 0,
       };
       current.approved_cents += inv.amount_cents || 0;
       grouped.set(inv.user_id, current);
     }
 
+    for (const wd of adminWithdrawals) {
+      if (wd.withdrawal_type !== "CAPITAL_REDEMPTION") continue;
+      if (wd.status === "REJECTED") continue;
+      if (!wd.user || wd.user <= 0) continue;
+
+      const current = grouped.get(wd.user) || {
+        user_id: wd.user,
+        username: wd.username || `user-${wd.user}`,
+        email: wd.email || "",
+        approved_cents: 0,
+        capital_out_cents: 0,
+      };
+      current.capital_out_cents += wd.amount_cents || 0;
+      grouped.set(wd.user, current);
+    }
+
     return [...grouped.values()]
-      .filter((row) => row.approved_cents > 0)
-      .sort((a, b) => b.approved_cents - a.approved_cents);
-  }, [adminItems]);
+      .map((row) => ({
+        ...row,
+        eligible_cents: Math.max(row.approved_cents - row.capital_out_cents, 0),
+      }))
+      .filter((row) => row.eligible_cents > 0)
+      .sort((a, b) => b.eligible_cents - a.eligible_cents);
+  }, [adminItems, adminWithdrawals]);
 
   const filteredEligibleClients = useMemo(() => {
     const q = normalizeSearch(searchClient);
@@ -515,7 +544,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   </div>
                   <p className="text-xs font-mono text-emerald-400 shrink-0">
-                    {formatCurrency(moneyFromCents(client.approved_cents))}
+                    {formatCurrency(moneyFromCents(client.eligible_cents))}
                   </p>
                 </label>
               ))
