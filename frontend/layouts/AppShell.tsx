@@ -214,10 +214,7 @@ export default function AppShell() {
   const handleToggleVerification = (userId: string) =>
     setSystemState(FinanceService.toggleUserVerification(userId));
 
-  const formattedDate =
-    systemState?.currentVirtualDate
-      ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(new Date(systemState.currentVirtualDate))
-      : "";
+  const formattedDate = new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(new Date());
 
   const title = loc.pathname.replace("/app/", "").replaceAll("-", " ").replaceAll("/", " / ");
 

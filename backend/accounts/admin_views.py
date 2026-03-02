@@ -10,7 +10,7 @@ from accounts.models import AccountProfile
 from accounts.serializers import SignupSerializer
 
 from portfolio.models import Investment
-from withdrawals.models import WithdrawalRequest
+from withdrawals.models import DailyPerformanceDistribution, WithdrawalRequest
 
 User = get_user_model()
 
@@ -92,6 +92,9 @@ class AdminClientStatementView(APIView):
             wd_qs.filter(status__in=["APPROVED", "PAID"]).aggregate(s=Sum("amount_cents"))["s"] or 0
         )
         balance_cents = invested_cents - withdrawn_cents
+        total_gained_cents = (
+            DailyPerformanceDistribution.objects.filter(user=u).aggregate(s=Sum("result_cents"))["s"] or 0
+        )
 
         investments = list(
             inv_qs.values("id", "amount_cents", "status", "created_at", "external_ref", "paid_at")
@@ -143,6 +146,7 @@ class AdminClientStatementView(APIView):
                     "invested_cents": invested_cents,
                     "withdrawn_cents": withdrawn_cents,
                     "balance_cents": balance_cents,
+                    "total_gained_cents": total_gained_cents,
                 },
                 "investments": investments,
                 "withdrawals": withdrawals,

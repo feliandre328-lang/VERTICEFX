@@ -861,6 +861,7 @@ export type AdminClientStatement = {
     invested_cents: number;
     withdrawn_cents: number;
     balance_cents: number;
+    total_gained_cents?: number;
   };
   investments: Array<{
     id: number;

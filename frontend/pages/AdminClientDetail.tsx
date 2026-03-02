@@ -13,6 +13,7 @@ import {
   Wallet,
   ArrowDownRight,
   ArrowUpRight,
+  TrendingUp,
 } from "lucide-react";
 
 import { useAuth } from "../layouts/AuthContext";
@@ -48,6 +49,7 @@ type ClientStatement = {
     invested_cents: number;
     withdrawn_cents: number;
     balance_cents: number;
+    total_gained_cents?: number;
   };
   investments: Array<{
     id: number;
@@ -160,6 +162,7 @@ export default function AdminClientDetail() {
 
   const u = data?.user;
   const p = data?.profile;
+  const totalGainedCents = data?.totals?.total_gained_cents ?? 0;
 
   
 
@@ -316,6 +319,14 @@ export default function AdminClientDetail() {
                     <span className="text-sm text-slate-300">Saldo</span>
                   </div>
                   <span className="font-mono text-slate-100">{money(data.totals.balance_cents)}</span>
+                </div>
+
+                <div className="flex items-center justify-between bg-emerald-900/10 border border-emerald-900/30 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp size={16} className="text-emerald-500" />
+                    <span className="text-sm text-slate-200">Total Já Ganho</span>
+                  </div>
+                  <span className="font-mono text-emerald-300">{money(totalGainedCents)}</span>
                 </div>
               </div>
             </div>
