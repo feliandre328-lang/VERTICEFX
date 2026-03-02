@@ -27,6 +27,7 @@ const toCurrency = (val: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
 
 const centsToReais = (cents: number) => cents / 100;
+const MIN_WEEKLY_WITHDRAWAL = 300;
 
 const toInputDate = (value?: string | number) => {
   const d = value ? new Date(value) : new Date();
@@ -262,8 +263,13 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
       : 0;
 
   const amountValue = parsePtBrCurrency(amount);
+  const weeklyMinInvalid =
+    type === "RESULT" &&
+    amountValue > 0 &&
+    amountValue < MIN_WEEKLY_WITHDRAWAL;
 
   const handleAmountChange = (raw: string) => {
+    if (errorMsg) setErrorMsg("");
     const digits = raw.replace(/\D/g, "");
     if (!digits) {
       setAmount("");
@@ -283,6 +289,11 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amountValue || !access) return;
+
+    if (type === "RESULT" && amountValue < MIN_WEEKLY_WITHDRAWAL) {
+      setErrorMsg(`Saque semanal com valor minimo de ${toCurrency(MIN_WEEKLY_WITHDRAWAL)}.`);
+      return;
+    }
 
     if (!userPickedDate || !scheduledIsValid) {
       setErrorMsg("Selecione uma sexta-feira válida para liberar o agendamento.");
@@ -421,6 +432,11 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
                     required
                   />
                 </div>
+                {weeklyMinInvalid ? (
+                  <p className="mt-2 text-[11px] text-red-300">
+                    Valor minimo para Saque Semanal: {toCurrency(MIN_WEEKLY_WITHDRAWAL)}.
+                  </p>
+                ) : null}
               </div>
 
               {/* ✅ SELECT para RESULT e CAPITAL: só próximas sextas */}
@@ -463,9 +479,9 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
               <div className="text-xs text-blue-300/80 space-y-1 leading-relaxed">
                 <p>Todas as solicitações passam por análise preventiva e validação operacional.</p>
                 <p className="mt-2">
-                  <strong>Saque Semanal</strong>: agendar apenas em sextas-feiras (somente sextas aparecem).{" "}
-                  <strong>Resgate de Capital</strong>: somente sobre aportes com mais de 90 dias e em sextas-feiras
-                  (somente sextas aparecem).
+                  <strong>1 - Saque Semanal com valor minimo de R$300,00</strong>: agendar apenas em sextas-feiras
+                  (somente sextas aparecem). <strong>2 - Resgate de Capital</strong>: somente sobre aportes com mais de
+                  90 dias e em sextas-feiras (somente sextas aparecem).
                 </p>
               </div>
             </div>
@@ -477,6 +493,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
                 (submitting) ||
                 (!amount) ||
                 (amountValue <= 0) ||
+                (weeklyMinInvalid) ||
                 (amountValue > maxAvailable) ||
                 (!userPickedDate) ||
                 (!scheduledIsValid)

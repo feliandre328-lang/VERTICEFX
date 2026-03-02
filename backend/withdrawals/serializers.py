@@ -15,6 +15,7 @@ from notifications.services import create_notification
 
 
 User = get_user_model()
+MIN_RESULT_SETTLEMENT_CENTS = 30000
 
 
 class WithdrawalRequestSerializer(serializers.ModelSerializer):
@@ -96,6 +97,12 @@ class WithdrawalRequestSerializer(serializers.ModelSerializer):
                 )
 
         if attrs["withdrawal_type"] == WithdrawalRequest.TYPE_RESULT_SETTLEMENT:
+            if cents < MIN_RESULT_SETTLEMENT_CENTS:
+                minimum_reais = Decimal(MIN_RESULT_SETTLEMENT_CENTS) / Decimal("100")
+                raise serializers.ValidationError(
+                    {"amount": f"Saque semanal com valor minimo de R$ {minimum_reais:.2f}."}
+                )
+
             balances = get_user_withdrawal_balances(request.user, reference_date=today)
             if cents > balances["available_result_cents"]:
                 available_reais = Decimal(balances["available_result_cents"]) / Decimal("100")
