@@ -7,6 +7,7 @@ import {
   DollarSign,
   Activity,
   Globe,
+  Wallet,
   UserCheck,
   ShieldCheck,
   ShieldOff,
@@ -18,6 +19,7 @@ import {
   createDailyPerformanceDistribution,
   listAdminInvestments,
   listAdminWithdrawals,
+  type AdminSummary,
   type AdminWithdrawalItem,
   approveInvestment,
   rejectInvestment,
@@ -65,12 +67,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ✅ Banco (admin)
   const [adminItems, setAdminItems] = useState<AdminInvestmentItem[]>([]);
   const [adminWithdrawals, setAdminWithdrawals] = useState<AdminWithdrawalItem[]>([]);
-  const [adminSummary, setAdminSummary] = useState<{
-    tvl_cents: number;
-    pending_cents: number;
-    pending_count: number;
-    approved_count: number;
-  } | null>(null);
+  const [adminSummary, setAdminSummary] = useState<AdminSummary | null>(null);
 
   const [loadingList, setLoadingList] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -86,11 +83,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
       .trim();
+  const parsedPerformancePercent = Number.parseFloat(performanceInput);
+  const validPerformancePercent = Number.isFinite(parsedPerformancePercent) ? parsedPerformancePercent : 0;
+  const previewPerformanceFactor = validPerformancePercent / 100;
+  const performancePercentLabel = validPerformancePercent.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
   async function refreshAdminSummary() {
     if (!access) return;
-    const s = await getAdminSummary(access);
-    setAdminSummary(s);
+    try {
+      setLoadingSummary(true);
+      const s = await getAdminSummary(access);
+      setAdminSummary(s);
+    } finally {
+      setLoadingSummary(false);
+    }
   }
 
   useEffect(() => {
@@ -129,15 +138,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // ✅ carrega ao abrir tela / mudar role
   useEffect(() => {
-    refreshAdminSummary();
-    refreshAdminList();
+    refreshAdminSummary().catch(() => {});
+    refreshAdminList().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access]);
 
   useEffect(() => {
     const onNotif = () => {
-      refreshAdminSummary();
-      refreshAdminList();
+      refreshAdminSummary().catch(() => {});
+      refreshAdminList().catch(() => {});
     };
     window.addEventListener("vfx:notifications:new", onNotif);
     return () => window.removeEventListener("vfx:notifications:new", onNotif);
@@ -147,14 +156,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   
   const handlePerformanceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const percent = parseFloat(performanceInput);
+    const percent = parsedPerformancePercent;
     if (!access || !Number.isFinite(percent)) {
       alert("Percentual de performance invalido.");
       return;
     }
 
     createDailyPerformanceDistribution(access, { performance_percent: percent })
-      .then((rows) => {
+      .then(async (rows) => {
+        await refreshAdminSummary();
         onSetPerformance(percent);
         alert(`Performance diaria aplicada. Distribuicoes geradas: ${rows.length}.`);
       })
@@ -182,7 +192,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleDistributeSelected = async () => {
-    const percent = parseFloat(performanceInput);
+    const percent = parsedPerformancePercent;
     if (!access || !Number.isFinite(percent)) {
       alert("Percentual de performance invalido.");
       return;
@@ -204,6 +214,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         totalRows += rows.length;
       }
 
+      await refreshAdminSummary();
       alert(`Distribuicao individual concluida para ${selectedUserIds.length} cliente(s). Registros: ${totalRows}.`);
       setSelectedUserIds([]);
     } catch (err: any) {
@@ -432,14 +443,73 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     </div>
   );
 
-  const renderPerformanceSection = () => (
-    <div className="space-y-4">
-      <h3 className="text-lg font-bold text-white flex items-center gap-2">
-        <Activity size={20} className="text-blue-500" />
-        Controle de Performance
-      </h3>
+  const renderPerformanceSection = () => {
+    const tvl = safeNumber(adminSummary?.tvl_cents, 0) / 100;
+    const clientsBalance = safeNumber(adminSummary?.clients_result_balance_cents, 0) / 100;
+    const simulatedClientsGain = tvl * previewPerformanceFactor;
+    const simulatedClientsGainPositive = simulatedClientsGain >= 0;
+    const consolidatedWallet = tvl + clientsBalance;
+    const distributionsUnpaid = safeNumber(adminSummary?.daily_distribution_total_cents, 0) / 100;
+    const ledgerManualUnpaid = safeNumber(adminSummary?.result_ledger_manual_total_cents, 0) / 100;
+    const resultWithdrawals = safeNumber(adminSummary?.result_settlement_withdrawals_cents, 0) / 100;
 
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+    return (
+      <div className="space-y-4">
+        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <Activity size={20} className="text-blue-500" />
+          Controle de Performance
+        </h3>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-lg bg-emerald-900/20 border border-emerald-900/30 flex items-center justify-center shrink-0">
+              <Wallet size={18} className="text-emerald-400" />
+            </div>
+            <div className="min-w-0 w-full">
+              <p className="text-[11px] text-slate-500 uppercase tracking-wider">Carteira Consolidada</p>
+              <p className="text-2xl font-bold text-white mt-1">{formatCurrency(consolidatedWallet)}</p>
+              <p className="text-xs text-slate-400 mt-1">
+                TVL em gestao + saldo de todos os clientes (distribuicoes/ledger).
+              </p>
+
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-500">TVL</p>
+                  <p className="text-sm font-semibold text-emerald-400">{formatCurrency(tvl)}</p>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-500">Saldo Clientes</p>
+                  <p className="text-sm font-semibold text-blue-300">{formatCurrency(clientsBalance)}</p>
+                </div>
+                <div
+                  className={`rounded-lg border px-3 py-2 ${
+                    simulatedClientsGainPositive
+                      ? "border-emerald-900/40 bg-emerald-900/10"
+                      : "border-red-900/40 bg-red-900/10"
+                  }`}
+                >
+                  <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                    Ganho Simulado TVL ({performancePercentLabel}%)
+                  </p>
+                  <p
+                    className={`text-sm font-semibold ${
+                      simulatedClientsGainPositive ? "text-emerald-300" : "text-red-300"
+                    }`}
+                  >
+                    {formatCurrency(simulatedClientsGain)}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-500 mt-2">
+                Base saldo clientes: Daily nao paga {formatCurrency(distributionsUnpaid)} + Ledger nao paga{" "}
+                {formatCurrency(ledgerManualUnpaid)} - Saques de resultado {formatCurrency(resultWithdrawals)}.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
         <p className="text-sm text-slate-400 mb-6">
           Defina o percentual diario e distribua para todos os contratos ativos ou somente para clientes selecionados.
         </p>
@@ -492,9 +562,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             Distribuir para Todos Elegiveis
           </button>
         </form>
-      </div>
+        </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <h4 className="text-white font-semibold">Distribuicao Individual (Saldo &gt; 0)</h4>
           <div className="text-xs text-slate-500">
@@ -524,30 +594,74 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {filteredEligibleClients.length === 0 ? (
               <div className="p-6 text-center text-sm text-slate-500">Nenhum cliente elegivel encontrado.</div>
             ) : (
-              filteredEligibleClients.map((client) => (
-                <label
-                  key={client.user_id}
-                  className="flex items-center justify-between gap-3 p-3 bg-slate-950/30 hover:bg-slate-800/30 cursor-pointer"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={selectedUserIds.includes(client.user_id)}
-                      onChange={() => toggleSelectUser(client.user_id)}
-                      className="accent-blue-600"
-                    />
-                    <div className="min-w-0">
-                      <p className="text-sm text-slate-200 truncate">{client.username}</p>
-                      <p className="text-[11px] text-slate-500 truncate">
-                        {client.email || "sem-email"} - id {client.user_id}
-                      </p>
+              filteredEligibleClients.map((client) => {
+                const simulatedDistributionCents = Math.round(client.eligible_cents * previewPerformanceFactor);
+                const simulatedDistributionPositive = simulatedDistributionCents >= 0;
+                const netAporteCents = Math.max(client.approved_cents - client.capital_out_cents, 0);
+                return (
+                  <label
+                    key={client.user_id}
+                    className="block p-3 bg-slate-950/30 hover:bg-slate-800/30 cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={selectedUserIds.includes(client.user_id)}
+                          onChange={() => toggleSelectUser(client.user_id)}
+                          className="accent-blue-600"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm text-slate-200 truncate">{client.username}</p>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {client.email || "sem-email"} - id {client.user_id}
+                          </p>
+                        </div>
+                      </div>
+                      <div
+                        className={`shrink-0 rounded-lg border px-3 py-2 text-right ${
+                          simulatedDistributionPositive
+                            ? "border-emerald-900/40 bg-emerald-900/10"
+                            : "border-red-900/40 bg-red-900/10"
+                        }`}
+                      >
+                        <p className="text-[10px] uppercase tracking-wider text-slate-400">
+                          Ganho simul. ({performancePercentLabel}%)
+                        </p>
+                        <p
+                          className={`text-sm font-bold font-mono ${
+                            simulatedDistributionPositive ? "text-emerald-300" : "text-red-300"
+                          }`}
+                        >
+                          {formatCurrency(moneyFromCents(simulatedDistributionCents))}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <p className="text-xs font-mono text-emerald-400 shrink-0">
-                    {formatCurrency(moneyFromCents(client.eligible_cents))}
-                  </p>
-                </label>
-              ))
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 pl-7">
+                      <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-slate-500">Aporte Total Atual</p>
+                        <p className="text-sm font-semibold text-slate-200 font-mono">
+                          {formatCurrency(moneyFromCents(netAporteCents))}
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-slate-500">
+                          Bruto {formatCurrency(moneyFromCents(client.approved_cents))} - Resgatado{" "}
+                          {formatCurrency(moneyFromCents(client.capital_out_cents))}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                          Saldo de Resgate Atual
+                        </p>
+                        <p className="text-sm font-semibold text-emerald-400 font-mono">
+                          {formatCurrency(moneyFromCents(client.eligible_cents))}
+                        </p>
+                      </div>
+                    </div>
+                  </label>
+                );
+              })
             )}
           </div>
         </div>
@@ -561,8 +675,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {processingSelected ? "Processando..." : "Distribuir para Selecionados"}
         </button>
       </div>
-    </div>
-  );
+      </div>
+    );
+  };
 
   const renderComplianceSection = () => (
     <div className="space-y-4">

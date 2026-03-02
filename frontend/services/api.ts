@@ -588,6 +588,12 @@ export type AdminSummary = {
   pending_cents: number;
   approved_count: number;
   pending_count: number;
+  daily_distribution_total_cents?: number;
+  result_ledger_total_cents?: number;
+  result_ledger_from_distribution_cents?: number;
+  result_ledger_manual_total_cents?: number;
+  result_settlement_withdrawals_cents?: number;
+  clients_result_balance_cents?: number;
 };
 
 export async function getAdminSummary(access: string): Promise<AdminSummary> {

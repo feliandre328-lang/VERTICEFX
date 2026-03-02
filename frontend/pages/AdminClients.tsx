@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserCheck, RefreshCcw, ChevronRight } from "lucide-react";
+import { UserCheck, RefreshCcw, ChevronRight, Search } from "lucide-react";
 
 import { useAuth } from "../layouts/AuthContext";
 import { listAdminClients, type AdminClient } from "../services/api";
@@ -13,6 +13,14 @@ export default function AdminClients() {
   const [items, setItems] = useState<AdminClient[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [searchClient, setSearchClient] = useState("");
+
+  const normalize = (value: string) =>
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
 
   const load = async () => {
     if (!access) return;
@@ -34,6 +42,16 @@ export default function AdminClients() {
   }, [access]);
 
   const goDetail = (id: number) => nav(`/app/admin/clients/${id}`);
+
+  const filteredItems = useMemo(() => {
+    const q = normalize(searchClient);
+    if (!q) return items;
+    return items.filter((u: any) => {
+      const username = normalize(String(u?.username ?? ""));
+      const fullName = normalize(String(u?.profile?.full_name ?? ""));
+      return username.includes(q) || fullName.includes(q);
+    });
+  }, [items, searchClient]);
 
   return (
     <div className="space-y-4">
@@ -60,11 +78,27 @@ export default function AdminClients() {
         </div>
       ) : null}
 
+      <div className="relative">
+        <Search
+          size={16}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+        />
+        <input
+          type="text"
+          value={searchClient}
+          onChange={(e) => setSearchClient(e.target.value)}
+          placeholder="Pesquisar cliente por nome..."
+          className="w-full bg-slate-900 border border-slate-800 rounded-lg py-2.5 pl-10 pr-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-900"
+        />
+      </div>
+
       <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-slate-400 text-sm">Carregando clientes...</div>
         ) : items.length === 0 ? (
           <div className="p-8 text-center text-slate-500 text-sm">Nenhum cliente cadastrado.</div>
+        ) : filteredItems.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-sm">Nenhum cliente encontrado para essa busca.</div>
         ) : (
           <>
             {/* Desktop */}
@@ -82,7 +116,7 @@ export default function AdminClients() {
                 </thead>
 
                 <tbody className="divide-y divide-slate-800">
-                  {items.map((u) => (
+                  {filteredItems.map((u: any) => (
                     <tr
                       key={u.id}
                       className="hover:bg-slate-800/30 transition-colors cursor-pointer"
@@ -118,7 +152,7 @@ export default function AdminClients() {
 
             {/* Mobile */}
             <div className="md:hidden p-4 space-y-3">
-              {items.map((u) => (
+              {filteredItems.map((u: any) => (
                 <button
                   key={u.id}
                   onClick={() => goDetail(u.id)}

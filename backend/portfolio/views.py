@@ -19,7 +19,7 @@ from .serializers import (
 from .mp_service import mp_create_pix_payment
 from notifications.models import Notification
 from notifications.services import create_notification, notify_admins
-from withdrawals.models import WithdrawalRequest
+from withdrawals.models import DailyPerformanceDistribution, ResultLedgerEntry, WithdrawalRequest
 
 
 class InvestmentViewSet(viewsets.ModelViewSet):
@@ -252,6 +252,49 @@ class AdminSummaryView(APIView):
         )
         tvl_net = max(tvl_approved - withdrawals_sum, 0)
 
+        # Distribuicoes de performance (fonte de resultado dos clientes).
+        daily_distribution_total_cents = (
+            DailyPerformanceDistribution.objects.aggregate(s=Sum("result_cents"))["s"]
+            or 0
+        )
+
+        # Ledger consolidado (inclui distribuicoes + ajustes manuais).
+        result_ledger_total_cents = (
+            ResultLedgerEntry.objects.aggregate(s=Sum("amount_cents"))["s"]
+            or 0
+        )
+
+        # Parcela do ledger gerada automaticamente pelas distribuicoes diarias.
+        result_ledger_from_distribution_cents = (
+            ResultLedgerEntry.objects.filter(external_ref__startswith="perf-")
+            .aggregate(s=Sum("amount_cents"))["s"]
+            or 0
+        )
+
+        # Ledger manual (nao originado por distribuicao diaria).
+        result_ledger_manual_total_cents = (
+            ResultLedgerEntry.objects.exclude(external_ref__startswith="perf-")
+            .aggregate(s=Sum("amount_cents"))["s"]
+            or 0
+        )
+
+        # Saques de resultado ja solicitados/aprovados/pagos (nao rejeitados).
+        result_settlement_withdrawals_cents = (
+            WithdrawalRequest.objects.filter(
+                withdrawal_type=WithdrawalRequest.TYPE_RESULT_SETTLEMENT
+            )
+            .exclude(status=WithdrawalRequest.STATUS_REJECTED)
+            .aggregate(s=Sum("amount_cents"))["s"]
+            or 0
+        )
+        # Saldo de clientes sem duplicar fonte:
+        # daily nao paga + ledger manual nao pago - saques de resultado nao rejeitados.
+        clients_result_balance_cents = max(
+            (daily_distribution_total_cents + result_ledger_manual_total_cents)
+            - result_settlement_withdrawals_cents,
+            0,
+        )
+
         return Response(
             {
                 "tvl_cents": tvl_net,
@@ -259,6 +302,12 @@ class AdminSummaryView(APIView):
                 "pending_cents": pending_sum,
                 "approved_count": approved_count,
                 "pending_count": pending_count,
+                "daily_distribution_total_cents": daily_distribution_total_cents,
+                "result_ledger_total_cents": result_ledger_total_cents,
+                "result_ledger_from_distribution_cents": result_ledger_from_distribution_cents,
+                "result_ledger_manual_total_cents": result_ledger_manual_total_cents,
+                "result_settlement_withdrawals_cents": result_settlement_withdrawals_cents,
+                "clients_result_balance_cents": clients_result_balance_cents,
             },
             status=status.HTTP_200_OK,
         )
