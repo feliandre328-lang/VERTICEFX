@@ -218,7 +218,9 @@ class AdminSummaryView(APIView):
     GET /api/admin/summary/
 
     Retorna:
-    - tvl_cents: aportes APROVADOS menos retiradas (resgates/saques não rejeitados)
+    - tvl_cents: aportes APROVADOS menos resgates de capital nao rejeitados
+    - withdrawals_cents: soma de todos os saques nao rejeitados (capital + resultado)
+    - capital_withdrawals_cents: soma de resgates de capital nao rejeitados
     - pending_cents: soma de TODOS os aportes PENDENTES
     - approved_count / pending_count
     """
@@ -254,7 +256,17 @@ class AdminSummaryView(APIView):
             .aggregate(s=Sum("amount_cents"))["s"]
             or 0
         )
-        tvl_net = max(tvl_approved - withdrawals_sum, 0)
+        # Evita desconto duplo na carteira consolidada:
+        # saque de resultado ja reduz o saldo de clientes, entao TVL reduz so com resgate de capital.
+        capital_withdrawals_sum = (
+            WithdrawalRequest.objects.filter(
+                withdrawal_type=WithdrawalRequest.TYPE_CAPITAL_REDEMPTION
+            )
+            .exclude(status=WithdrawalRequest.STATUS_REJECTED)
+            .aggregate(s=Sum("amount_cents"))["s"]
+            or 0
+        )
+        tvl_net = max(tvl_approved - capital_withdrawals_sum, 0)
 
         # Distribuicoes de performance (fonte de resultado dos clientes).
         daily_distribution_total_cents = (
@@ -303,6 +315,7 @@ class AdminSummaryView(APIView):
             {
                 "tvl_cents": tvl_net,
                 "withdrawals_cents": withdrawals_sum,
+                "capital_withdrawals_cents": capital_withdrawals_sum,
                 "pending_cents": pending_sum,
                 "approved_count": approved_count,
                 "pending_count": pending_count,

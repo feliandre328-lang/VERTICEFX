@@ -676,6 +676,7 @@ export async function rejectInvestment(access: string, id: number | string) {
 export type AdminSummary = {
   tvl_cents: number;
   withdrawals_cents?: number;
+  capital_withdrawals_cents?: number;
   pending_cents: number;
   approved_count: number;
   pending_count: number;

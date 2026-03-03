@@ -45,3 +45,7 @@ __pycache__/
 *.pyc
 media/
 staticfiles/
+
+# sh
+*.sh
+.sh

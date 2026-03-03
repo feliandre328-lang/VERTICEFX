@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { SystemState } from "../types";
 import {
@@ -194,55 +194,56 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
   const [loadingData, setLoadingData] = useState(false);
   const [dataError, setDataError] = useState("");
 
+  const filterByLoggedUser = useCallback(
+    (items: any[]) => {
+      const loggedUserId = Number(user?.id);
+      if (!Number.isFinite(loggedUserId)) return [];
+
+      const hasUserField = items.some((item) => item?.user_id !== undefined || item?.user !== undefined);
+      if (!hasUserField) return items;
+
+      return items.filter((item) => {
+        const itemUserId = item?.user_id ?? item?.user;
+        return Number(itemUserId) === loggedUserId;
+      });
+    },
+    [user?.id]
+  );
+
+  const loadStatementData = useCallback(async () => {
+    if (!access) return;
+    try {
+      setLoadingData(true);
+      setDataError("");
+      const [investmentData, withdrawalData, distributionData] = await Promise.all([
+        listInvestments(access),
+        listWithdrawals(access),
+        listDailyPerformanceDistributions(access),
+      ]);
+      setInvestments(filterByLoggedUser(investmentData ?? []) as InvestmentItem[]);
+      setWithdrawals(filterByLoggedUser(withdrawalData ?? []) as WithdrawalItem[]);
+      setDistributions(filterByLoggedUser(distributionData ?? []) as DailyPerformanceDistribution[]);
+    } catch (e: any) {
+      setDataError(e?.message ?? "Falha ao carregar extrato.");
+    } finally {
+      setLoadingData(false);
+    }
+  }, [access, filterByLoggedUser]);
+
   useEffect(() => {
     if (!access) return;
-
-    const loadStatementData = async () => {
-      try {
-        setLoadingData(true);
-        setDataError("");
-        const [investmentData, withdrawalData, distributionData] = await Promise.all([
-          listInvestments(access),
-          listWithdrawals(access),
-          listDailyPerformanceDistributions(access),
-        ]);
-        setInvestments(investmentData ?? []);
-        setWithdrawals(withdrawalData ?? []);
-        setDistributions(distributionData ?? []);
-      } catch (e: any) {
-        setDataError(e?.message ?? "Falha ao carregar extrato.");
-      } finally {
-        setLoadingData(false);
-      }
-    };
-
-    loadStatementData();
-  }, [access]);
+    void loadStatementData();
+  }, [access, loadStatementData]);
 
   useEffect(() => {
     if (!access) return;
-    const onNotif = async () => {
-      try {
-        setLoadingData(true);
-        setDataError("");
-        const [investmentData, withdrawalData, distributionData] = await Promise.all([
-          listInvestments(access),
-          listWithdrawals(access),
-          listDailyPerformanceDistributions(access),
-        ]);
-        setInvestments(investmentData ?? []);
-        setWithdrawals(withdrawalData ?? []);
-        setDistributions(distributionData ?? []);
-      } catch (e: any) {
-        setDataError(e?.message ?? "Falha ao carregar extrato.");
-      } finally {
-        setLoadingData(false);
-      }
+    const onNotif = () => {
+      void loadStatementData();
     };
 
     window.addEventListener("vfx:notifications:new", onNotif);
     return () => window.removeEventListener("vfx:notifications:new", onNotif);
-  }, [access]);
+  }, [access, loadStatementData]);
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
