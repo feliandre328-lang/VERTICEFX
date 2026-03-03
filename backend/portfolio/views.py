@@ -1,10 +1,14 @@
 import uuid
+from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal, ROUND_HALF_UP
+from xml.etree import ElementTree
 
+import requests
+from django.core.cache import cache
 from django.db.models import Sum, Count
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.views import APIView
 from rest_framework.response import Response
 
@@ -311,3 +315,161 @@ class AdminSummaryView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+MARKET_TICKER_CACHE_KEY = "vfx:market_ticker:v1"
+MARKET_TICKER_TTL_SECONDS = 60
+MARKET_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+)
+STOCK_SYMBOLS = [
+    ("PETR4.SA", "PETR4"),
+    ("VALE3.SA", "VALE3"),
+    ("ITUB4.SA", "ITUB4"),
+    ("BBAS3.SA", "BBAS3"),
+    ("BOVA11.SA", "BOVA11"),
+]
+USD_BRL_SYMBOL = ("BRL=X", "USD/BRL")
+PTBR_NEWS_FEEDS = [
+    ("https://www.infomoney.com.br/mercados/feed/", "InfoMoney"),
+    ("https://www.moneytimes.com.br/feed/", "Money Times"),
+    ("https://br.investing.com/rss/news.rss", "Investing BR"),
+]
+
+
+def _to_float(raw: str | None):
+    if raw is None:
+        return None
+    value = (raw or "").strip()
+    if not value or value.upper() in ("N/D", "N/A", "-"):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fetch_yahoo_chart_quote(symbol: str, label: str, market: str):
+    try:
+        res = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+            params={"interval": "1d", "range": "5d"},
+            timeout=6,
+            headers={"User-Agent": MARKET_USER_AGENT},
+        )
+        res.raise_for_status()
+        payload = res.json()
+        result = ((payload.get("chart") or {}).get("result") or [None])[0]
+        if not result:
+            return None
+        meta = result.get("meta") or {}
+        price = _to_float(str(meta.get("regularMarketPrice")))
+        prev = _to_float(str(meta.get("chartPreviousClose") or meta.get("previousClose")))
+
+        if price is None:
+            closes = (((result.get("indicators") or {}).get("quote") or [{}])[0]).get("close") or []
+            for value in reversed(closes):
+                parsed = _to_float(str(value))
+                if parsed is not None:
+                    price = parsed
+                    break
+
+        if price is None:
+            return None
+
+        change_pct = None
+        if prev and prev != 0:
+            change_pct = round(((price - prev) / prev) * 100, 2)
+
+        return {
+            "type": "quote",
+            "market": market,
+            "symbol": label,
+            "price": price,
+            "change_pct": change_pct,
+            "currency": (meta.get("currency") or "BRL"),
+        }
+    except Exception:
+        return None
+
+
+def _fetch_rss_feed_items(feed_url: str, source: str, limit: int = 4):
+    try:
+        res = requests.get(
+            feed_url,
+            timeout=8,
+            headers={"User-Agent": MARKET_USER_AGENT},
+        )
+        res.raise_for_status()
+        root = ElementTree.fromstring(res.text)
+
+        items = []
+        for item in root.findall("./channel/item"):
+            title = (item.findtext("title") or "").strip()
+            link = (item.findtext("link") or "").strip()
+            if not title or not link:
+                continue
+            items.append(
+                {
+                    "type": "news",
+                    "title": title,
+                    "url": link,
+                    "source": source,
+                }
+            )
+            if len(items) >= limit:
+                break
+        return items
+    except Exception:
+        return []
+
+
+def _fetch_ptbr_news(limit: int = 6):
+    items = []
+    seen_urls = set()
+
+    per_feed_limit = 3 if limit > 3 else 2
+    for feed_url, source in PTBR_NEWS_FEEDS:
+        feed_items = _fetch_rss_feed_items(feed_url=feed_url, source=source, limit=per_feed_limit)
+        for item in feed_items:
+            url = item.get("url") or ""
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            items.append(item)
+            if len(items) >= limit:
+                return items
+
+    return items
+
+
+class MarketTickerView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        cached = cache.get(MARKET_TICKER_CACHE_KEY)
+        if cached:
+            return Response(cached, status=status.HTTP_200_OK)
+
+        quotes = []
+        for symbol, label in STOCK_SYMBOLS:
+            row = _fetch_yahoo_chart_quote(symbol=symbol, label=label, market="equity")
+            if row:
+                quotes.append(row)
+
+        usd_brl = _fetch_yahoo_chart_quote(symbol=USD_BRL_SYMBOL[0], label=USD_BRL_SYMBOL[1], market="fx")
+        if usd_brl:
+            quotes.append(usd_brl)
+
+        news = _fetch_ptbr_news(limit=6)
+
+        payload = {
+            "updated_at": datetime.now(dt_timezone.utc).isoformat(),
+            "quotes": quotes,
+            "news": news,
+        }
+
+        cache.set(MARKET_TICKER_CACHE_KEY, payload, MARKET_TICKER_TTL_SECONDS)
+        return Response(payload, status=status.HTTP_200_OK)

@@ -9,6 +9,7 @@ from portfolio.views import (
     PixChargeView,
     DashboardSummaryView,
     AdminSummaryView,
+    MarketTickerView,
 )
 from withdrawals.views import (
     AdminWithdrawalViewSet,
@@ -57,6 +58,7 @@ urlpatterns = [
     path("api/admin/summary/", AdminSummaryView.as_view()),
     path("api/withdrawals/summary/", WithdrawalSummaryView.as_view()),
     path("api/referrals/summary/", ReferralSummaryView.as_view()),
+    path("api/market/ticker/", MarketTickerView.as_view()),
 
 
     # API
@@ -71,4 +73,3 @@ urlpatterns = [
     #path("api/admin/clients/<int:user_id>/", AdminClientDetailView.as_view()),
     path("api/admin/clients/<int:user_id>/statement/", AdminClientStatementView.as_view()),
 ]
-

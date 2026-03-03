@@ -105,6 +105,54 @@ export async function fetchMe(accessToken: string): Promise<Me> {
   return json as Me;
 }
 
+export type MarketTickerQuote = {
+  type: "quote";
+  market: "equity" | "fx" | string;
+  symbol: string;
+  price: number;
+  change_pct: number | null;
+  currency?: string;
+};
+
+export type MarketTickerNews = {
+  type: "news";
+  title: string;
+  url: string;
+  source?: string;
+};
+
+export type MarketTickerResponse = {
+  updated_at: string;
+  quotes: MarketTickerQuote[];
+  news: MarketTickerNews[];
+};
+
+export async function getMarketTicker(): Promise<MarketTickerResponse> {
+  const res = await fetch(`${API_BASE}/market/ticker/`);
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar ticker de mercado: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  const quotes = Array.isArray(json?.quotes)
+    ? json.quotes.map((q: any) => ({
+      ...q,
+      price: Number(q?.price ?? 0),
+      change_pct: q?.change_pct === null || q?.change_pct === undefined ? null : Number(q.change_pct),
+      currency: typeof q?.currency === "string" ? q.currency : undefined,
+    }))
+    : [];
+
+  const news = Array.isArray(json?.news) ? json.news : [];
+
+  return {
+    updated_at: typeof json?.updated_at === "string" ? json.updated_at : "",
+    quotes,
+    news,
+  };
+}
+
 export type PasswordResetRequestResponse = {
   detail: string;
   delivery?: "email" | "manual" | string;
