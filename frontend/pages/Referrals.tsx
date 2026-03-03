@@ -4,6 +4,7 @@ import { Copy, Users, Gift, Ticket, CheckCircle, Clock } from "lucide-react";
 import { useAuth } from "../layouts/AuthContext";
 import {
   createReferralInvite,
+  fetchMe,
   getReferralSummary,
   listReferralInvites,
   type ReferralInvite,
@@ -16,28 +17,37 @@ interface ReferralsProps {
 }
 
 const Referrals: React.FC<ReferralsProps> = ({ user }) => {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, user: authUser } = useAuth();
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
   const [summary, setSummary] = useState<ReferralSummary | null>(null);
   const [invites, setInvites] = useState<ReferralInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
+  const [resolvedUserId, setResolvedUserId] = useState<number | null>(authUser?.id ?? null);
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const referralCode = summary?.referral_code || user.referralCode;
-  const referralLink = `https://vertice.fx/invite/${referralCode}`;
+  const inviteUserId = String(resolvedUserId ?? "").trim();
+  const referralLink = useMemo(() => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://verticefx.com.br";
+    return `${origin}/invite/VFX-${inviteUserId}`;
+  }, [inviteUserId]);
 
   const loadData = async () => {
     if (!access) return;
     setLoading(true);
     setErrorMsg("");
     try {
-      const [summaryData, invitesData] = await Promise.all([getReferralSummary(access), listReferralInvites(access)]);
+      const [summaryData, invitesData, meData] = await Promise.all([
+        getReferralSummary(access),
+        listReferralInvites(access),
+        fetchMe(access),
+      ]);
       setSummary(summaryData);
       setInvites(invitesData);
+      setResolvedUserId(meData?.id ?? null);
     } catch (err: any) {
       setErrorMsg(err?.message ?? "Falha ao carregar indicacoes.");
     } finally {
