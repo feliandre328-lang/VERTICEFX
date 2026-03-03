@@ -105,6 +105,49 @@ export async function fetchMe(accessToken: string): Promise<Me> {
   return json as Me;
 }
 
+export type PasswordResetRequestResponse = {
+  detail: string;
+  delivery?: "email" | "manual" | string;
+  reset_url?: string;
+};
+
+export async function requestPasswordReset(identifier: string): Promise<PasswordResetRequestResponse> {
+  const res = await fetch(`${API_BASE}/auth/password-reset/request/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier }),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao solicitar redefinição: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return (json ?? {}) as PasswordResetRequestResponse;
+}
+
+export async function confirmPasswordReset(data: {
+  uid: string;
+  token: string;
+  new_password: string;
+  new_password2: string;
+}): Promise<{ detail: string }> {
+  const res = await fetch(`${API_BASE}/auth/password-reset/confirm/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao redefinir senha: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return (json ?? {}) as { detail: string };
+}
+
 // -------------------- DASHBOARD SUMMARY -------------------- //
 
 export type DashboardSummary = {

@@ -1,5 +1,10 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
 from django.db.models import Sum
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -7,12 +12,107 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import AccountProfile
-from accounts.serializers import SignupSerializer
+from accounts.serializers import (
+    PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer,
+    SignupSerializer,
+)
 
 from portfolio.models import Investment
 from withdrawals.models import DailyPerformanceDistribution, WithdrawalRequest
 
 User = get_user_model()
+
+
+def _resolve_frontend_base_url(request) -> str:
+    configured = (getattr(settings, "FRONTEND_BASE_URL", "") or "").strip()
+    if configured:
+        return configured.rstrip("/")
+
+    origin = (request.headers.get("Origin", "") or "").strip()
+    if origin.startswith("http://") or origin.startswith("https://"):
+        return origin.rstrip("/")
+
+    return "http://localhost:3000"
+
+
+class PasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        ser = PasswordResetRequestSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        identifier = ser.validated_data["identifier"].strip()
+        safe_msg = "Se a conta existir, as instruções de redefinição foram geradas."
+
+        user = User.objects.filter(username__iexact=identifier).first()
+        if user is None:
+            user = User.objects.filter(email__iexact=identifier).first()
+
+        if not user or not user.is_active:
+            return Response({"detail": safe_msg}, status=status.HTTP_200_OK)
+
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        frontend_base = _resolve_frontend_base_url(request)
+        reset_url = f"{frontend_base}/reset-password?uid={uid}&token={token}"
+
+        email_sent = False
+        if user.email and getattr(settings, "PASSWORD_RESET_SEND_EMAIL", False):
+            subject = "Redefinição de senha - Vértice FX"
+            message = (
+                "Recebemos uma solicitação para redefinir sua senha.\n\n"
+                f"Acesse o link para continuar:\n{reset_url}\n\n"
+                "Se você não solicitou esta alteração, ignore este e-mail."
+            )
+            try:
+                send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                    recipient_list=[user.email],
+                    fail_silently=False,
+                )
+                email_sent = True
+            except Exception:
+                email_sent = False
+
+        response_data = {"detail": safe_msg, "delivery": "email" if email_sent else "manual"}
+        if not email_sent:
+            response_data["reset_url"] = reset_url
+
+        return Response(response_data, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        ser = PasswordResetConfirmSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        uid = ser.validated_data["uid"]
+        token = ser.validated_data["token"]
+        new_password = ser.validated_data["new_password"]
+
+        invalid_msg = "Link de redefinição inválido ou expirado."
+
+        try:
+            user_pk = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=user_pk)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            return Response({"detail": invalid_msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not default_token_generator.check_token(user, token):
+            return Response({"detail": invalid_msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+
+        return Response({"detail": "Senha redefinida com sucesso."}, status=status.HTTP_200_OK)
 
 
 class AdminClientsView(APIView):

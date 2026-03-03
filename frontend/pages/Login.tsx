@@ -217,6 +217,18 @@ const Login: React.FC<Props> = ({ mode }) => {
                   disabled={loading}
                 />
               </div>
+              {!isAdmin && (
+                <div className="mt-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => nav("/reset-password")}
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                    disabled={loading}
+                  >
+                    Esqueci minha senha
+                  </button>
+                </div>
+              )}
             </div>
 
             <button

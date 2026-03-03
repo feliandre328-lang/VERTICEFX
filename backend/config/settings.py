@@ -174,4 +174,7 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "").strip()
+PASSWORD_RESET_SEND_EMAIL = os.getenv("PASSWORD_RESET_SEND_EMAIL", "false").strip().lower() in ("1", "true", "yes")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@verticefx.com.br").strip()
 

@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from .models import AccountProfile
 
@@ -89,3 +90,21 @@ class AdminClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "username", "email", "is_active", "date_joined", "profile"]
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    identifier = serializers.CharField(max_length=254)
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8, trim_whitespace=False)
+    new_password2 = serializers.CharField(write_only=True, min_length=8, trim_whitespace=False)
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["new_password2"]:
+            raise serializers.ValidationError({"new_password2": "As senhas não conferem."})
+
+        validate_password(attrs["new_password"])
+        return attrs
