@@ -114,6 +114,21 @@ export type Me = {
   email: string;
   is_staff: boolean;
   is_superuser: boolean;
+  is_active?: boolean;
+  date_joined?: string;
+  profile?: {
+    full_name?: string;
+    cpf?: string;
+    phone?: string;
+    dob?: string | null;
+    zip_code?: string;
+    street?: string;
+    number?: string;
+    complement?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+  } | null;
 };
 
 export async function fetchMe(accessToken: string): Promise<Me> {

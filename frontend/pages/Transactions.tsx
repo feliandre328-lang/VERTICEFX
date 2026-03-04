@@ -4,7 +4,9 @@ import { SystemState } from "../types";
 import {
   DailyPerformanceDistribution,
   InvestmentItem,
+  Me,
   WithdrawalItem,
+  fetchMe,
   listDailyPerformanceDistributions,
   listInvestments,
   listWithdrawals,
@@ -128,14 +130,50 @@ function buildPageStream(params: {
   rows: StatementRow[];
   pageIndex: number;
   pageCount: number;
-  clientName: string;
+  clientDisplayName: string;
+  clientUsername: string;
   clientEmail: string;
   clientId: string;
+  clientCpf: string;
+  clientPhone: string;
+  clientDob: string;
+  clientJoinedAt: string;
+  clientStatus: string;
+  clientAddressLine1: string;
+  clientAddressLine2: string;
   role: string;
+  clientTotalInvested: number;
+  clientCapitalRedeemed: number;
+  clientResultGenerated: number;
+  clientResultSettled: number;
+  clientPatrimony: number;
   totalIn: number;
   totalOut: number;
 }) {
-  const { rows, pageIndex, pageCount, clientName, clientEmail, clientId, role, totalIn, totalOut } = params;
+  const {
+    rows,
+    pageIndex,
+    pageCount,
+    clientDisplayName,
+    clientUsername,
+    clientEmail,
+    clientId,
+    clientCpf,
+    clientPhone,
+    clientDob,
+    clientJoinedAt,
+    clientStatus,
+    clientAddressLine1,
+    clientAddressLine2,
+    role,
+    clientTotalInvested,
+    clientCapitalRedeemed,
+    clientResultGenerated,
+    clientResultSettled,
+    clientPatrimony,
+    totalIn,
+    totalOut,
+  } = params;
   const cmds: string[] = [];
 
   cmds.push("0.95 0.97 1 rg");
@@ -153,27 +191,42 @@ function buildPageStream(params: {
   cmds.push("40 744 m 555 744 l S");
 
   cmds.push("0.98 0.99 1 rg");
-  cmds.push("40 676 515 56 re f");
+  cmds.push("40 560 515 172 re f");
   cmds.push("0.87 0.9 0.95 RG 1 w");
-  cmds.push("40 676 515 56 re S");
-  cmds.push(textCmd(50, 718, 9, `Cliente: ${clientName}`));
-  cmds.push(textCmd(50, 704, 9, `Email: ${clientEmail}`));
-  cmds.push(textCmd(50, 690, 9, `ID: ${clientId} | Perfil: ${role}`));
-  cmds.push(textCmd(330, 718, 9, `Entradas: ${toAscii(formatPdfMoney(totalIn))}`));
-  cmds.push(textCmd(330, 704, 9, `Saidas: ${toAscii(formatPdfMoney(totalOut))}`));
-  cmds.push(textCmd(330, 690, 9, `Liquido: ${toAscii(formatPdfMoney(totalIn - totalOut))}`));
+  cmds.push("40 560 515 172 re S");
+  cmds.push(textCmd(50, 718, 9, safeCell(`Cliente: ${clientDisplayName}`, 55)));
+  cmds.push(textCmd(50, 704, 9, safeCell(`Usuario: ${clientUsername}`, 55)));
+  cmds.push(textCmd(50, 690, 9, safeCell(`Email: ${clientEmail}`, 55)));
+  cmds.push(textCmd(50, 676, 9, safeCell(`CPF: ${clientCpf}`, 55)));
+  cmds.push(textCmd(50, 662, 9, safeCell(`Telefone: ${clientPhone}`, 55)));
+  cmds.push(textCmd(50, 648, 9, safeCell(`Nascimento: ${clientDob}`, 55)));
+  cmds.push(textCmd(50, 634, 9, safeCell(`Endereco: ${clientAddressLine1}`, 55)));
+  cmds.push(textCmd(50, 620, 9, safeCell(`Localidade: ${clientAddressLine2}`, 55)));
+
+  cmds.push(textCmd(330, 718, 9, safeCell(`ID: ${clientId}`, 38)));
+  cmds.push(textCmd(330, 704, 9, safeCell(`Perfil: ${role}`, 38)));
+  cmds.push(textCmd(330, 690, 9, safeCell(`Status: ${clientStatus}`, 38)));
+  cmds.push(textCmd(330, 676, 9, safeCell(`Cadastro: ${clientJoinedAt}`, 38)));
+  cmds.push(textCmd(330, 662, 9, safeCell(`Total aportado: ${toAscii(formatPdfMoney(clientTotalInvested))}`, 38)));
+  cmds.push(textCmd(330, 648, 9, safeCell(`Resgate capital: ${toAscii(formatPdfMoney(clientCapitalRedeemed))}`, 38)));
+  cmds.push(textCmd(330, 634, 9, safeCell(`Resultado gerado: ${toAscii(formatPdfMoney(clientResultGenerated))}`, 38)));
+  cmds.push(textCmd(330, 620, 9, safeCell(`Resultado liquidado: ${toAscii(formatPdfMoney(clientResultSettled))}`, 38)));
+  cmds.push(textCmd(330, 606, 9, safeCell(`Patrimonio atual: ${toAscii(formatPdfMoney(clientPatrimony))}`, 38)));
+  cmds.push(textCmd(330, 592, 9, safeCell(`Extrato entradas: ${toAscii(formatPdfMoney(totalIn))}`, 38)));
+  cmds.push(textCmd(330, 578, 9, safeCell(`Extrato saidas: ${toAscii(formatPdfMoney(totalOut))}`, 38)));
+  cmds.push(textCmd(330, 564, 9, safeCell(`Extrato liquido: ${toAscii(formatPdfMoney(totalIn - totalOut))}`, 38)));
 
   cmds.push("0.92 0.94 0.97 rg");
-  cmds.push(`${TABLE_X} 648 ${TABLE_W} ${ROW_H} re f`);
+  cmds.push(`${TABLE_X} 528 ${TABLE_W} ${ROW_H} re f`);
   cmds.push("0.8 0.84 0.9 RG 1 w");
-  cmds.push(`${TABLE_X} 648 ${TABLE_W} ${ROW_H} re S`);
-  cmds.push(textCmd(52, 656, 9, "Data"));
-  cmds.push(textCmd(128, 656, 9, "Operacao"));
-  cmds.push(textCmd(208, 656, 9, "ID"));
-  cmds.push(textCmd(302, 656, 9, "Status"));
-  cmds.push(textCmd(455, 656, 9, "Valor"));
+  cmds.push(`${TABLE_X} 528 ${TABLE_W} ${ROW_H} re S`);
+  cmds.push(textCmd(52, 536, 9, "Data"));
+  cmds.push(textCmd(128, 536, 9, "Operacao"));
+  cmds.push(textCmd(208, 536, 9, "ID"));
+  cmds.push(textCmd(302, 536, 9, "Status"));
+  cmds.push(textCmd(455, 536, 9, "Valor"));
 
-  const tableStartY = 648 - ROW_H;
+  const tableStartY = 528 - ROW_H;
   rows.forEach((row, idx) => {
     const y = tableStartY - idx * ROW_H;
     if (idx % 2 === 0) {
@@ -204,45 +257,50 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
   const [investments, setInvestments] = useState<InvestmentItem[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalItem[]>([]);
   const [distributions, setDistributions] = useState<DailyPerformanceDistribution[]>([]);
+  const [statementUser, setStatementUser] = useState<Me | null>(user ?? null);
   const [loadingData, setLoadingData] = useState(false);
   const [dataError, setDataError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  const filterByLoggedUser = useCallback(
-    (items: any[]) => {
-      const loggedUserId = Number(user?.id);
-      if (!Number.isFinite(loggedUserId)) return [];
-
-      const hasUserField = items.some((item) => item?.user_id !== undefined || item?.user !== undefined);
-      if (!hasUserField) return items;
-
-      return items.filter((item) => {
-        const itemUserId = item?.user_id ?? item?.user;
-        return Number(itemUserId) === loggedUserId;
-      });
-    },
-    [user?.id]
-  );
+  useEffect(() => {
+    setStatementUser(user ?? null);
+  }, [user]);
 
   const loadStatementData = useCallback(async () => {
     if (!access) return;
     try {
       setLoadingData(true);
       setDataError("");
-      const [investmentData, withdrawalData, distributionData] = await Promise.all([
+      const [investmentData, withdrawalData, distributionData, meData] = await Promise.all([
         listInvestments(access),
         listWithdrawals(access),
         listDailyPerformanceDistributions(access),
+        fetchMe(access).catch(() => null),
       ]);
-      setInvestments(filterByLoggedUser(investmentData ?? []) as InvestmentItem[]);
-      setWithdrawals(filterByLoggedUser(withdrawalData ?? []) as WithdrawalItem[]);
-      setDistributions(filterByLoggedUser(distributionData ?? []) as DailyPerformanceDistribution[]);
+      const resolvedUser = meData ?? user ?? null;
+      const resolvedUserId = Number(resolvedUser?.id);
+      setStatementUser(resolvedUser);
+
+      const filterByUser = (items: any[]) => {
+        if (!Array.isArray(items)) return [];
+        const hasUserField = items.some((item) => item?.user_id !== undefined || item?.user !== undefined);
+        if (!hasUserField) return items;
+        if (!Number.isFinite(resolvedUserId)) return [];
+        return items.filter((item) => {
+          const itemUserId = item?.user_id ?? item?.user;
+          return Number(itemUserId) === resolvedUserId;
+        });
+      };
+
+      setInvestments(filterByUser(investmentData ?? []) as InvestmentItem[]);
+      setWithdrawals(filterByUser(withdrawalData ?? []) as WithdrawalItem[]);
+      setDistributions(filterByUser(distributionData ?? []) as DailyPerformanceDistribution[]);
     } catch (e: any) {
       setDataError(e?.message ?? "Falha ao carregar extrato.");
     } finally {
       setLoadingData(false);
     }
-  }, [access, filterByLoggedUser]);
+  }, [access, user]);
 
   useEffect(() => {
     if (!access) return;
@@ -276,6 +334,88 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
     if (status === "APPROVED") return "Aprovado";
     return status;
   };
+
+  const formatClientDate = (value?: string | null) => {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) return "-";
+    return parsed.toLocaleDateString("pt-BR");
+  };
+
+  const clientInfo = useMemo(() => {
+    const source = statementUser ?? user ?? null;
+    const profile = source?.profile ?? null;
+    const clean = (value?: string | null) => String(value ?? "").trim();
+
+    const addressHead = [clean(profile?.street), clean(profile?.number)].filter(Boolean).join(", ");
+    const complement = clean(profile?.complement);
+    const addressLine1 = addressHead
+      ? `${addressHead}${complement ? ` - ${complement}` : ""}`
+      : complement || "-";
+
+    const cityState = [clean(profile?.city), clean(profile?.state)].filter(Boolean).join("/");
+    const addressLine2 = [clean(profile?.neighborhood), cityState, clean(profile?.zip_code) ? `CEP ${clean(profile?.zip_code)}` : ""]
+      .filter(Boolean)
+      .join(" | ");
+
+    return {
+      displayName: clean(profile?.full_name) || clean(source?.username) || "Cliente",
+      username: clean(source?.username) || "-",
+      email: clean(source?.email) || "-",
+      id: source?.id ? String(source.id) : "-",
+      role: role || "CLIENT",
+      cpf: clean(profile?.cpf) || "-",
+      phone: clean(profile?.phone) || "-",
+      dob: formatClientDate(profile?.dob),
+      joinedAt: formatClientDate(source?.date_joined),
+      status: source?.is_active === false ? "Inativo" : source?.is_active === true ? "Ativo" : "-",
+      zipCode: clean(profile?.zip_code) || "-",
+      street: clean(profile?.street) || "-",
+      number: clean(profile?.number) || "-",
+      complement: clean(profile?.complement) || "-",
+      neighborhood: clean(profile?.neighborhood) || "-",
+      city: clean(profile?.city) || "-",
+      state: clean(profile?.state) || "-",
+      addressLine1,
+      addressLine2: addressLine2 || "-",
+    };
+  }, [statementUser, user, role]);
+
+  const clientTotals = useMemo(() => {
+    const approvedInvestmentCents = investments
+      .filter((inv) => String(inv?.status ?? "").toUpperCase() === "APPROVED")
+      .reduce((sum, inv) => sum + Number(inv?.amount_cents ?? 0), 0);
+
+    const capitalRedeemedCents = withdrawals
+      .filter((wd) => {
+        const type = String(wd?.withdrawal_type ?? "").toUpperCase();
+        const status = String(wd?.status ?? "").toUpperCase();
+        return type === "CAPITAL_REDEMPTION" && (status === "APPROVED" || status === "PAID");
+      })
+      .reduce((sum, wd) => sum + Number(wd?.amount_cents ?? 0), 0);
+
+    const resultSettledCents = withdrawals
+      .filter((wd) => {
+        const type = String(wd?.withdrawal_type ?? "").toUpperCase();
+        const status = String(wd?.status ?? "").toUpperCase();
+        return type === "RESULT_SETTLEMENT" && (status === "APPROVED" || status === "PAID");
+      })
+      .reduce((sum, wd) => sum + Number(wd?.amount_cents ?? 0), 0);
+
+    const resultGeneratedCents = distributions.reduce((sum, dist) => sum + Number(dist?.result_cents ?? 0), 0);
+
+    const capitalBalanceCents = Math.max(approvedInvestmentCents - capitalRedeemedCents, 0);
+    const resultBalanceCents = Math.max(resultGeneratedCents - resultSettledCents, 0);
+    const patrimonyCents = capitalBalanceCents + resultBalanceCents;
+
+    return {
+      totalInvested: approvedInvestmentCents / 100,
+      capitalRedeemed: capitalRedeemedCents / 100,
+      resultGenerated: resultGeneratedCents / 100,
+      resultSettled: resultSettledCents / 100,
+      patrimony: patrimonyCents / 100,
+    };
+  }, [investments, withdrawals, distributions]);
 
   const rows = useMemo<StatementRow[]>(() => {
     const aporteRows: StatementRow[] = investments.map((inv) => ({
@@ -394,10 +534,23 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
         rows: chunk as StatementRow[],
         pageIndex: idx,
         pageCount: pdfRows.length,
-        clientName: user?.username || "Cliente",
-        clientEmail: user?.email || "-",
-        clientId: user?.id ? String(user.id) : "-",
-        role: role || "CLIENT",
+        clientDisplayName: clientInfo.displayName,
+        clientUsername: clientInfo.username,
+        clientEmail: clientInfo.email,
+        clientId: clientInfo.id,
+        clientCpf: clientInfo.cpf,
+        clientPhone: clientInfo.phone,
+        clientDob: clientInfo.dob,
+        clientJoinedAt: clientInfo.joinedAt,
+        clientStatus: clientInfo.status,
+        clientAddressLine1: clientInfo.addressLine1,
+        clientAddressLine2: clientInfo.addressLine2,
+        role: clientInfo.role,
+        clientTotalInvested: clientTotals.totalInvested,
+        clientCapitalRedeemed: clientTotals.capitalRedeemed,
+        clientResultGenerated: clientTotals.resultGenerated,
+        clientResultSettled: clientTotals.resultSettled,
+        clientPatrimony: clientTotals.patrimony,
         totalIn,
         totalOut,
       })
@@ -428,6 +581,80 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
           <Download size={14} />
           Exportar PDF
         </button>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 md:p-5">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h3 className="text-sm font-semibold text-slate-200">Dados do Cliente</h3>
+          <span className="text-[11px] text-slate-500 uppercase tracking-wider">{clientInfo.status}</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Nome completo</p>
+            <p className="text-slate-200">{clientInfo.displayName}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Usuario</p>
+            <p className="text-slate-200">{clientInfo.username}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Email</p>
+            <p className="text-slate-200 break-all">{clientInfo.email}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">ID</p>
+            <p className="text-slate-200">{clientInfo.id}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">CPF</p>
+            <p className="text-slate-200">{clientInfo.cpf}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Telefone</p>
+            <p className="text-slate-200">{clientInfo.phone}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Nascimento</p>
+            <p className="text-slate-200">{clientInfo.dob}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Cadastro</p>
+            <p className="text-slate-200">{clientInfo.joinedAt}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">CEP</p>
+            <p className="text-slate-200">{clientInfo.zipCode}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Rua</p>
+            <p className="text-slate-200">{clientInfo.street}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Numero</p>
+            <p className="text-slate-200">{clientInfo.number}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Complemento</p>
+            <p className="text-slate-200">{clientInfo.complement}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Bairro</p>
+            <p className="text-slate-200">{clientInfo.neighborhood}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Cidade</p>
+            <p className="text-slate-200">{clientInfo.city}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Estado</p>
+            <p className="text-slate-200">{clientInfo.state}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wider">Perfil</p>
+            <p className="text-slate-200">{clientInfo.role}</p>
+          </div>
+        </div>
       </div>
 
       <div className="relative">
