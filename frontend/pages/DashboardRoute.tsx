@@ -50,12 +50,13 @@ export default function DashboardRoute() {
     if (!access) return;
     try {
       const wd = await getWithdrawalSummary(access);
-      const investmentsBalance = Number(wd.investments_total_cents || 0) / 100;
+      // Visao Geral: considerar somente aportes aprovados (exclui PENDING/REJECTED).
+      const approvedInvestmentsBalance = Number(wd.approved_capital_cents || 0) / 100;
       const capitalRedemptionBalance = Number(wd.capital_reserved_total_cents || 0) / 100;
       const weeklyWithdrawalBalance = Number(wd.available_result_cents || 0) / 100;
-      const balanceCapital = investmentsBalance - capitalRedemptionBalance + weeklyWithdrawalBalance;
+      const balanceCapital = approvedInvestmentsBalance - capitalRedemptionBalance + weeklyWithdrawalBalance;
       const balanceResults = Number(wd.daily_distribution_total_cents || 0) / 100;
-      const totalContributed = investmentsBalance - capitalRedemptionBalance;
+      const totalContributed = approvedInvestmentsBalance - capitalRedemptionBalance;
       setSystemState((prev) => ({
         ...prev,
         balanceCapital,
