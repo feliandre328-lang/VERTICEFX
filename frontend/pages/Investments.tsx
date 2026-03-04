@@ -59,24 +59,38 @@ export default function Investments() {
   return (
     <div className="space-y-6">
       <div className="bg-slate-900 border border-slate-800 rounded-lg">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between gap-3">
-          <h3 className="text-white font-bold">Meus Aportes</h3>
-          <div className="flex items-center gap-2">
-            <form onSubmit={handleSearch} className="flex items-center gap-2">
-              <input
-                value={queryInput}
-                onChange={(e) => setQueryInput(e.target.value)}
-                placeholder="Pesquisar por id, status, valor, data, ref..."
-                className="bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white w-[520px] max-w-[52vw]"
-              />
+        <div className="p-4 border-b border-slate-800 flex flex-col lg:flex-row lg:items-center gap-3">
+          <h3 className="text-white font-bold shrink-0">Meus Aportes</h3>
+          <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2 w-full">
+            <form onSubmit={handleSearch} className="flex-1 flex items-center gap-2 w-full">
+              <div className="relative flex-1">
+                <input
+                  value={queryInput}
+                  onChange={(e) => setQueryInput(e.target.value)}
+                  placeholder="Pesquisar por id, status, valor, data, ref..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 pr-20 text-sm text-white"
+                />
+                {queryInput || query ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQueryInput("");
+                      setQuery("");
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+                  >
+                    Limpar
+                  </button>
+                ) : null}
+              </div>
               <button
                 type="submit"
-                className="px-3 py-2 rounded border border-slate-700 bg-slate-800 text-slate-200 text-xs hover:bg-slate-700"
+                className="px-3 py-2 rounded border border-slate-700 bg-slate-800 text-slate-200 text-xs hover:bg-slate-700 shrink-0"
               >
                 Pesquisar
               </button>
             </form>
-            <button onClick={() => refresh().catch(() => {})} className="text-xs text-slate-300 hover:text-white">
+            <button onClick={() => refresh().catch(() => {})} className="text-xs text-slate-300 hover:text-white shrink-0">
               Atualizar
             </button>
           </div>

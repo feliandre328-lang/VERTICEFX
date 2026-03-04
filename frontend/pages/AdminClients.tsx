@@ -88,8 +88,17 @@ export default function AdminClients() {
           value={searchClient}
           onChange={(e) => setSearchClient(e.target.value)}
           placeholder="Pesquisar cliente por nome..."
-          className="w-full bg-slate-900 border border-slate-800 rounded-lg py-2.5 pl-10 pr-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-900"
+          className="w-full bg-slate-900 border border-slate-800 rounded-lg py-2.5 pl-10 pr-20 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-900"
         />
+        {searchClient ? (
+          <button
+            type="button"
+            onClick={() => setSearchClient("")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+          >
+            Limpar
+          </button>
+        ) : null}
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">

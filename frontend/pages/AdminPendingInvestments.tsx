@@ -1,23 +1,27 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   approveAdminWithdrawal,
-  approveInvestment,
-  listAdminInvestments,
   listAdminWithdrawals,
   payAdminWithdrawal,
   rejectAdminWithdrawal,
-  rejectInvestment,
-  type AdminInvestmentItem,
   type AdminWithdrawalItem,
 } from "../services/api";
 
 type StatusFilter = "" | "PENDING" | "APPROVED" | "REJECTED" | "PAID";
+type WithdrawalTypeFilter = "" | "RESULT_SETTLEMENT" | "CAPITAL_REDEMPTION";
 
 const fmt = (cents: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((cents || 0) / 100);
 
+const normalizeSearch = (value: string) =>
+  (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
 const typeLabel = (kind: string) =>
-  kind === "CAPITAL_REDEMPTION" ? "Resgate de Capital" : "Liquidacao de Resultados";
+  kind === "CAPITAL_REDEMPTION" ? "Resgate de Capital" : "Saque Semanal";
 
 const statusLabel = (status: string) => {
   if (status === "APPROVED") return "Aprovado";
@@ -35,9 +39,9 @@ const statusBadgeClass = (status: string) => {
 
 export default function AdminPendingInvestments() {
   const access = useMemo(() => localStorage.getItem("access") || "", []);
-  const [tab, setTab] = useState<"INVESTMENTS" | "WITHDRAWALS">("INVESTMENTS");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
-  const [investmentItems, setInvestmentItems] = useState<AdminInvestmentItem[]>([]);
+  const [typeFilter, setTypeFilter] = useState<WithdrawalTypeFilter>("");
+  const [search, setSearch] = useState("");
   const [withdrawalItems, setWithdrawalItems] = useState<AdminWithdrawalItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
@@ -51,14 +55,10 @@ export default function AdminPendingInvestments() {
     setLoading(true);
     setMsg("");
     try {
-      const [investments, withdrawals] = await Promise.all([
-        listAdminInvestments(access),
-        listAdminWithdrawals(access),
-      ]);
-      setInvestmentItems(investments);
+      const withdrawals = await listAdminWithdrawals(access);
       setWithdrawalItems(withdrawals);
     } catch (e: any) {
-      setMsg(e?.message ?? "Erro ao carregar pendencias");
+      setMsg(e?.message ?? "Erro ao carregar solicitacoes");
     } finally {
       setLoading(false);
     }
@@ -77,26 +77,6 @@ export default function AdminPendingInvestments() {
     return () => window.removeEventListener("vfx:notifications:new", onNotif);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access]);
-
-  const onApproveInvestment = async (id: number | string) => {
-    if (!confirm("Aprovar este aporte?")) return;
-    try {
-      await approveInvestment(access, id);
-      await refresh();
-    } catch (e: any) {
-      alert(e?.message ?? "Erro ao aprovar aporte");
-    }
-  };
-
-  const onRejectInvestment = async (id: number | string) => {
-    if (!confirm("Rejeitar este aporte?")) return;
-    try {
-      await rejectInvestment(access, id);
-      await refresh();
-    } catch (e: any) {
-      alert(e?.message ?? "Erro ao rejeitar aporte");
-    }
-  };
 
   const onApproveWithdrawal = async (id: number | string) => {
     if (!confirm("Aprovar esta solicitacao?")) return;
@@ -132,13 +112,31 @@ export default function AdminPendingInvestments() {
     }
   };
 
-  const filteredInvestmentItems = statusFilter
-    ? investmentItems.filter((it) => it.status === statusFilter)
-    : investmentItems;
+  const baseFilteredWithdrawals = useMemo(() => {
+    const q = normalizeSearch(search);
+    return withdrawalItems.filter((it) => {
+      if (typeFilter && it.withdrawal_type !== typeFilter) return false;
+      if (!q) return true;
+      const haystack = normalizeSearch(
+        [
+          it.username,
+          it.email,
+          String(it.user),
+          String(it.id),
+          it.pix_key || "",
+          it.external_ref || "",
+          typeLabel(it.withdrawal_type),
+          statusLabel(it.status),
+          fmt(it.amount_cents),
+        ].join(" ")
+      );
+      return haystack.includes(q);
+    });
+  }, [withdrawalItems, typeFilter, search]);
 
   const filteredWithdrawalItems = statusFilter
-    ? withdrawalItems.filter((it) => it.status === statusFilter)
-    : withdrawalItems;
+    ? baseFilteredWithdrawals.filter((it) => it.status === statusFilter)
+    : baseFilteredWithdrawals;
 
   const capitalWithdrawals = filteredWithdrawalItems.filter(
     (it) => it.withdrawal_type === "CAPITAL_REDEMPTION"
@@ -147,11 +145,12 @@ export default function AdminPendingInvestments() {
     (it) => it.withdrawal_type === "RESULT_SETTLEMENT"
   );
 
-  const countBase = tab === "INVESTMENTS" ? investmentItems : withdrawalItems;
-  const approvedCount = countBase.filter((it) => it.status === "APPROVED").length;
-  const pendingCount = countBase.filter((it) => it.status === "PENDING").length;
-  const rejectedCount = countBase.filter((it) => it.status === "REJECTED").length;
-  const paidCount = tab === "WITHDRAWALS" ? withdrawalItems.filter((it) => it.status === "PAID").length : 0;
+  const pendingCount = baseFilteredWithdrawals.filter((it) => it.status === "PENDING").length;
+  const approvedCount = baseFilteredWithdrawals.filter((it) => it.status === "APPROVED").length;
+  const rejectedCount = baseFilteredWithdrawals.filter((it) => it.status === "REJECTED").length;
+  const paidCount = baseFilteredWithdrawals.filter((it) => it.status === "PAID").length;
+  const weeklyCount = withdrawalItems.filter((it) => it.withdrawal_type === "RESULT_SETTLEMENT").length;
+  const capitalCount = withdrawalItems.filter((it) => it.withdrawal_type === "CAPITAL_REDEMPTION").length;
 
   const renderWithdrawalGroup = (title: string, items: AdminWithdrawalItem[]) => (
     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -239,9 +238,9 @@ export default function AdminPendingInvestments() {
     <div className="space-y-4">
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-white font-bold text-lg">Aprovacoes Pendentes</h2>
+          <h2 className="text-white font-bold text-lg">Admin de Saques e Resgates</h2>
           <p className="text-slate-400 text-sm mt-1">
-            Fluxo completo do admin: aportes, resgates de capital e liquidacoes de resultados.
+            Controle operacional de saque semanal e resgate de aporte.
           </p>
         </div>
 
@@ -254,66 +253,57 @@ export default function AdminPendingInvestments() {
         </button>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        <button
-          onClick={() => {
-            setTab("INVESTMENTS");
-            if (statusFilter === "PAID") setStatusFilter("");
-          }}
-          className={`px-3 py-2 rounded-lg border text-sm ${
-            tab === "INVESTMENTS"
-              ? "border-slate-600 bg-slate-800 text-white"
-              : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Aportes ({investmentItems.length})
-        </button>
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
+        <div className="relative">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Pesquisar por usuario, email, id, valor, tipo, status, pix, referencia..."
+            className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2.5 pl-3 pr-20 text-sm text-white focus:outline-none focus:border-blue-900"
+          />
+          {search ? (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+            >
+              Limpar
+            </button>
+          ) : null}
+        </div>
 
-        <button
-          onClick={() => setTab("WITHDRAWALS")}
-          className={`px-3 py-2 rounded-lg border text-sm ${
-            tab === "WITHDRAWALS"
-              ? "border-slate-600 bg-slate-800 text-white"
-              : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Resgates e Liquidacoes ({withdrawalItems.length})
-        </button>
-
-        <button
-          onClick={() => setStatusFilter((v) => (v === "PENDING" ? "" : "PENDING"))}
-          className={`px-3 py-2 rounded-lg border text-sm ${
-            statusFilter === "PENDING"
-              ? "border-amber-700 bg-amber-900/20 text-amber-300"
-              : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Pendentes ({pendingCount})
-        </button>
-
-        <button
-          onClick={() => setStatusFilter((v) => (v === "APPROVED" ? "" : "APPROVED"))}
-          className={`px-3 py-2 rounded-lg border text-sm ${
-            statusFilter === "APPROVED"
-              ? "border-emerald-700 bg-emerald-900/20 text-emerald-300"
-              : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Aprovados ({approvedCount})
-        </button>
-
-        <button
-          onClick={() => setStatusFilter((v) => (v === "REJECTED" ? "" : "REJECTED"))}
-          className={`px-3 py-2 rounded-lg border text-sm ${
-            statusFilter === "REJECTED"
-              ? "border-red-700 bg-red-900/20 text-red-300"
-              : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          Rejeitados ({rejectedCount})
-        </button>
-
-        {tab === "WITHDRAWALS" ? (
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setTypeFilter("")}
+            className={`px-3 py-2 rounded-lg border text-sm ${
+              typeFilter === ""
+                ? "border-slate-600 bg-slate-800 text-white"
+                : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Todos ({withdrawalItems.length})
+          </button>
+          <button
+            onClick={() => setTypeFilter((v) => (v === "RESULT_SETTLEMENT" ? "" : "RESULT_SETTLEMENT"))}
+            className={`px-3 py-2 rounded-lg border text-sm ${
+              typeFilter === "RESULT_SETTLEMENT"
+                ? "border-cyan-700 bg-cyan-900/20 text-cyan-300"
+                : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Saques Semanais ({weeklyCount})
+          </button>
+          <button
+            onClick={() => setTypeFilter((v) => (v === "CAPITAL_REDEMPTION" ? "" : "CAPITAL_REDEMPTION"))}
+            className={`px-3 py-2 rounded-lg border text-sm ${
+              typeFilter === "CAPITAL_REDEMPTION"
+                ? "border-orange-700 bg-orange-900/20 text-orange-300"
+                : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Resgates de Aporte ({capitalCount})
+          </button>
           <button
             onClick={() => setStatusFilter((v) => (v === "PAID" ? "" : "PAID"))}
             className={`px-3 py-2 rounded-lg border text-sm ${
@@ -324,7 +314,40 @@ export default function AdminPendingInvestments() {
           >
             Pagos ({paidCount})
           </button>
-        ) : null}
+        </div>
+
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setStatusFilter((v) => (v === "PENDING" ? "" : "PENDING"))}
+            className={`px-3 py-2 rounded-lg border text-sm ${
+              statusFilter === "PENDING"
+                ? "border-amber-700 bg-amber-900/20 text-amber-300"
+                : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Pendentes ({pendingCount})
+          </button>
+          <button
+            onClick={() => setStatusFilter((v) => (v === "APPROVED" ? "" : "APPROVED"))}
+            className={`px-3 py-2 rounded-lg border text-sm ${
+              statusFilter === "APPROVED"
+                ? "border-emerald-700 bg-emerald-900/20 text-emerald-300"
+                : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Aprovados ({approvedCount})
+          </button>
+          <button
+            onClick={() => setStatusFilter((v) => (v === "REJECTED" ? "" : "REJECTED"))}
+            className={`px-3 py-2 rounded-lg border text-sm ${
+              statusFilter === "REJECTED"
+                ? "border-red-700 bg-red-900/20 text-red-300"
+                : "border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Rejeitados ({rejectedCount})
+          </button>
+        </div>
       </div>
 
       {msg ? (
@@ -333,63 +356,10 @@ export default function AdminPendingInvestments() {
         </div>
       ) : null}
 
-      {tab === "INVESTMENTS" ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-          {filteredInvestmentItems.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 text-sm">Nenhum aporte encontrado.</div>
-          ) : (
-            <div className="divide-y divide-slate-800">
-              {filteredInvestmentItems.map((it) => (
-                <div key={it.id} className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="text-slate-200 text-sm font-semibold flex items-center gap-2">
-                      <span>{fmt(it.amount_cents)}</span>
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase ${statusBadgeClass(
-                          it.status
-                        )}`}
-                      >
-                        {statusLabel(it.status)}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      <b className="text-slate-400">Usuario:</b> {it.user_username || "-"} ({it.user_email || "sem-email"}) - id{" "}
-                      {it.user_id || "-"}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      <b className="text-slate-400">Criado:</b> {new Date(it.created_at).toLocaleString("pt-BR")}
-                    </div>
-                  </div>
-
-                  {it.status === "PENDING" ? (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => onRejectInvestment(it.id)}
-                        className="px-4 py-2 rounded-lg border border-red-900/50 bg-red-900/20 text-red-300 text-sm hover:bg-red-900/30"
-                      >
-                        Rejeitar
-                      </button>
-                      <button
-                        onClick={() => onApproveInvestment(it.id)}
-                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500"
-                      >
-                        Aprovar
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-slate-500">Sem acao</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {renderWithdrawalGroup("Liquidacoes de Resultados", resultWithdrawals)}
-          {renderWithdrawalGroup("Resgates de Capital", capitalWithdrawals)}
-        </div>
-      )}
+      <div className="space-y-4">
+        {renderWithdrawalGroup("Saques Semanais", resultWithdrawals)}
+        {renderWithdrawalGroup("Resgates de Aporte", capitalWithdrawals)}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Search } from "lucide-react";
 import { SystemState } from "../types";
 import {
   DailyPerformanceDistribution,
@@ -23,6 +23,12 @@ type StatementRow = {
   status: string;
   amount: number;
   direction: "IN" | "OUT";
+};
+
+const normalizeSearchText = (value: unknown) => {
+  const text = String(value ?? "").toLowerCase().trim();
+  if (typeof text.normalize !== "function") return text;
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 };
 
 const PAGE_WIDTH = 595;
@@ -105,6 +111,13 @@ const safeCell = (value: string, max = 20) => {
   const normalized = toAscii(value || "");
   if (normalized.length <= max) return normalized;
   return `${normalized.slice(0, max - 3)}...`;
+};
+
+const operationLabel = (op: StatementRow["operation"]) => {
+  if (op === "RESGATE_CAPITAL") return "RESGATE CAPITAL";
+  if (op === "LIQUIDACAO_RESULTADO") return "LIQ. RESULTADO";
+  if (op === "DISTRIBUICAO") return "DISTRIBUICAO";
+  return "APORTE";
 };
 
 const textCmd = (x: number, y: number, size: number, text: string) =>
@@ -193,6 +206,7 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
   const [distributions, setDistributions] = useState<DailyPerformanceDistribution[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [dataError, setDataError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const filterByLoggedUser = useCallback(
     (items: any[]) => {
@@ -263,13 +277,6 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
     return status;
   };
 
-  const operationLabel = (op: StatementRow["operation"]) => {
-    if (op === "RESGATE_CAPITAL") return "RESGATE CAPITAL";
-    if (op === "LIQUIDACAO_RESULTADO") return "LIQ. RESULTADO";
-    if (op === "DISTRIBUICAO") return "DISTRIBUICAO";
-    return "APORTE";
-  };
-
   const rows = useMemo<StatementRow[]>(() => {
     const aporteRows: StatementRow[] = investments.map((inv) => ({
       id: String(inv.id),
@@ -311,6 +318,43 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
     });
   }, [investments, withdrawals, distributions]);
 
+  const filteredRows = useMemo<StatementRow[]>(() => {
+    try {
+      const q = normalizeSearchText(searchTerm);
+      if (!q) return rows;
+
+      return rows.filter((row) => {
+        const rowDate = new Date(row.date);
+        const dateLabel = Number.isFinite(rowDate.getTime()) ? rowDate.toLocaleDateString("pt-BR") : "";
+        const dateTimeLabel = Number.isFinite(rowDate.getTime()) ? rowDate.toLocaleString("pt-BR") : "";
+        const amountNumber = Number(row.amount);
+        const safeAmount = Number.isFinite(amountNumber) ? amountNumber : 0;
+        const amountFixed = safeAmount.toFixed(2);
+        const amountCurrency = formatCurrency(safeAmount);
+        const amountComma = amountFixed.replace(".", ",");
+        const amountDigitsOnly = amountCurrency.replace(/[^\d]/g, "");
+        const fields = [
+          row.id,
+          row.date,
+          dateLabel,
+          dateTimeLabel,
+          operationLabel(row.operation),
+          row.operation,
+          row.description,
+          row.status,
+          amountCurrency,
+          amountFixed,
+          amountComma,
+          amountDigitsOnly,
+        ];
+
+        return fields.some((value) => normalizeSearchText(value).includes(q));
+      });
+    } catch {
+      return rows;
+    }
+  }, [rows, searchTerm]);
+
   const StatusBadge = ({ status }: { status: string }) => (
     <span
       className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
@@ -326,16 +370,16 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
   );
 
   const handleExportPdf = () => {
-    if (rows.length === 0) {
+    if (filteredRows.length === 0) {
       alert("Sem dados para exportar.");
       return;
     }
 
-    const totalIn = rows.filter((r) => r.direction === "IN").reduce((sum, r) => sum + r.amount, 0);
-    const totalOut = rows.filter((r) => r.direction === "OUT").reduce((sum, r) => sum + r.amount, 0);
+    const totalIn = filteredRows.filter((r) => r.direction === "IN").reduce((sum, r) => sum + r.amount, 0);
+    const totalOut = filteredRows.filter((r) => r.direction === "OUT").reduce((sum, r) => sum + r.amount, 0);
     const chunks: StatementRow[][] = [];
-    for (let i = 0; i < rows.length; i += ROWS_PER_PAGE) {
-      chunks.push(rows.slice(i, i + ROWS_PER_PAGE));
+    for (let i = 0; i < filteredRows.length; i += ROWS_PER_PAGE) {
+      chunks.push(filteredRows.slice(i, i + ROWS_PER_PAGE));
     }
 
     const pdfRows = chunks.map((chunk) =>
@@ -378,12 +422,32 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
         <h2 className="text-xl font-bold text-white">Extrato Financeiro</h2>
         <button
           onClick={handleExportPdf}
-          disabled={rows.length === 0}
+          disabled={filteredRows.length === 0}
           className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-300 rounded border border-slate-700 transition-colors text-xs font-medium w-full sm:w-auto"
         >
           <Download size={14} />
           Exportar PDF
         </button>
+      </div>
+
+      <div className="relative">
+        <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Pesquisar por data, valor, operacao, descricao, status ou ID..."
+          className="w-full bg-slate-900 border border-slate-800 rounded-lg py-2.5 pl-10 pr-20 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-900"
+        />
+        {searchTerm ? (
+          <button
+            type="button"
+            onClick={() => setSearchTerm("")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+          >
+            Limpar
+          </button>
+        ) : null}
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg">
@@ -395,10 +459,12 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
 
         {rows.length === 0 ? (
           <div className="px-6 py-12 text-center text-slate-600">Nenhum registro encontrado.</div>
+        ) : filteredRows.length === 0 ? (
+          <div className="px-6 py-12 text-center text-slate-600">Nenhum registro encontrado para essa busca.</div>
         ) : (
           <div>
             <div className="md:hidden p-4 space-y-3">
-              {rows.map((row) => (
+              {filteredRows.map((row) => (
                 <div key={`${row.operation}-${row.id}`} className="bg-slate-800/50 p-4 rounded-lg border border-slate-800/80">
                   <div className="flex justify-between items-start mb-3">
                     <div className="pr-4">
@@ -440,7 +506,7 @@ const Transactions: React.FC<TransactionsProps> = ({ state: _state }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {rows.map((row) => (
+                  {filteredRows.map((row) => (
                     <tr key={`${row.operation}-${row.id}`} className="hover:bg-slate-800/30 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-slate-300">{new Date(row.date).toLocaleDateString("pt-BR")}</div>

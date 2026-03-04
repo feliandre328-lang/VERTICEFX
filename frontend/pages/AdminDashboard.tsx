@@ -574,13 +574,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="grid md:grid-cols-[1fr_auto] gap-3">
-          <input
-            type="text"
-            value={searchClient}
-            onChange={(e) => setSearchClient(e.target.value)}
-            placeholder="Pesquisar por usuario, e-mail ou id..."
-            className="bg-slate-950 border border-slate-800 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none focus:border-blue-900"
-          />
+          <div className="relative">
+            <input
+              type="text"
+              value={searchClient}
+              onChange={(e) => setSearchClient(e.target.value)}
+              placeholder="Pesquisar por usuario, e-mail ou id..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2.5 pl-3 pr-20 text-sm text-white focus:outline-none focus:border-blue-900"
+            />
+            {searchClient ? (
+              <button
+                type="button"
+                onClick={() => setSearchClient("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+              >
+                Limpar
+              </button>
+            ) : null}
+          </div>
           <button
             type="button"
             onClick={toggleSelectAllFiltered}
