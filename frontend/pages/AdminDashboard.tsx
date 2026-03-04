@@ -24,6 +24,7 @@ import {
   approveInvestment,
   rejectInvestment,
   getAdminSummary,
+  verifyCurrentUserPassword,
 } from "../services/api";
 
 type AdminInvestmentItem = {
@@ -55,7 +56,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   view,
   onNavigate,
 }) => {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, user } = useAuth();
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
   const [performanceInput, setPerformanceInput] = useState<string>("0.50");
@@ -72,7 +73,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [loadingList, setLoadingList] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [errMsg, setErrMsg] = useState<string>("");
-  const distributionPassphrase = "DISTRIBUIR";
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -155,29 +155,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [access]);
 
   
-  const handlePerformanceSubmit = (e: React.FormEvent) => {
+  const confirmDistributionWithUserPassword = async (): Promise<boolean> => {
+    if (!user?.username) {
+      alert("Usuario atual nao identificado. Faca login novamente.");
+      return false;
+    }
+
+    const typedPassword = window.prompt("Digite sua senha para confirmar a distribuicao:");
+    if (typedPassword === null) return false;
+    if (!typedPassword) {
+      alert("Senha obrigatoria.");
+      return false;
+    }
+
+    try {
+      await verifyCurrentUserPassword(user.username, typedPassword);
+      return true;
+    } catch (err: any) {
+      alert(err?.message ?? "Senha invalida.");
+      return false;
+    }
+  };
+
+  const handlePerformanceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const percent = parsedPerformancePercent;
     if (!access || !Number.isFinite(percent)) {
       alert("Percentual de performance invalido.");
       return;
     }
-    const typedPassphrase = window.prompt('Digite a contra-senha para confirmar a distribuicao:');
-    if (typedPassphrase === null) return;
-    if (typedPassphrase.trim().toUpperCase() !== distributionPassphrase) {
-      alert("Contra-senha invalida. Distribuicao cancelada.");
-      return;
-    }
+    const confirmed = await confirmDistributionWithUserPassword();
+    if (!confirmed) return;
 
-    createDailyPerformanceDistribution(access, { performance_percent: percent })
-      .then(async (rows) => {
-        await refreshAdminSummary();
-        onSetPerformance(percent);
-        alert(`Performance diaria aplicada. Distribuicoes geradas: ${rows.length}.`);
-      })
-      .catch((err: any) => {
-        alert(err?.message ?? "Falha ao distribuir performance diaria.");
-      });
+    try {
+      const rows = await createDailyPerformanceDistribution(access, { performance_percent: percent });
+      await refreshAdminSummary();
+      onSetPerformance(percent);
+      alert(`Performance diaria aplicada. Distribuicoes geradas: ${rows.length}.`);
+    } catch (err: any) {
+      alert(err?.message ?? "Falha ao distribuir performance diaria.");
+    }
   };
 
   const toggleSelectUser = (userId: number) => {
@@ -208,12 +225,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       alert("Selecione pelo menos 1 cliente.");
       return;
     }
-    const typedPassphrase = window.prompt('Digite a contra-senha para confirmar a distribuicao:');
-    if (typedPassphrase === null) return;
-    if (typedPassphrase.trim().toUpperCase() !== distributionPassphrase) {
-      alert("Contra-senha invalida. Distribuicao cancelada.");
-      return;
-    }
+    const confirmed = await confirmDistributionWithUserPassword();
+    if (!confirmed) return;
 
     try {
       setProcessingSelected(true);

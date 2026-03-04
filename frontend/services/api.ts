@@ -83,6 +83,31 @@ export async function login(username: string, password: string): Promise<TokenPa
   return json as TokenPair;
 }
 
+export async function verifyCurrentUserPassword(username: string, password: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/token/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (res.ok) return;
+
+  const raw = await res.text();
+  let detail = raw;
+  try {
+    const json = raw ? JSON.parse(raw) : null;
+    detail = (json && (json.detail || json.message)) || raw;
+  } catch {
+    detail = raw;
+  }
+
+  if (res.status === 400 || res.status === 401) {
+    throw new Error("Senha invalida.");
+  }
+
+  throw new Error(`Falha ao validar senha: ${res.status} ${detail || "erro desconhecido"}`);
+}
+
 export type Me = {
   id: number;
   username: string;
