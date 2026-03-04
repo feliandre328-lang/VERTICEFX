@@ -13,6 +13,7 @@ import {
   createWithdrawal,
   getWithdrawalSummary,
   listWithdrawals,
+  verifyCurrentUserPassword,
   type WithdrawalItem,
   type WithdrawalSummary,
   type WithdrawalType,
@@ -116,7 +117,7 @@ const getNextFridaysList = (startYmd: string, count = 40) => {
 };
 
 const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
-  const { getAccessToken } = useAuth();
+  const { getAccessToken, user } = useAuth();
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
   const todayDate = useMemo(() => toInputDate(Date.now()), []);
@@ -303,6 +304,18 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
     try {
       setSubmitting(true);
       setErrorMsg("");
+      if (!user?.username) {
+        setErrorMsg("Usuario atual nao identificado. Faca login novamente.");
+        return;
+      }
+
+      const typedPassword = window.prompt("Digite sua senha para confirmar a solicitacao:");
+      if (typedPassword === null) return;
+      if (!typedPassword) {
+        setErrorMsg("Senha obrigatoria para confirmar a solicitacao.");
+        return;
+      }
+      await verifyCurrentUserPassword(user.username, typedPassword);
 
       await createWithdrawal(access, {
         withdrawal_type: type === "CAPITAL" ? "CAPITAL_REDEMPTION" : "RESULT_SETTLEMENT",
@@ -319,7 +332,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
       }
       await loadWithdrawalData(type === "CAPITAL" ? scheduledDate : undefined, { silent: true });
     } catch (err: any) {
-      setErrorMsg(err?.message ?? "Falha ao solicitar resgate.");
+      setErrorMsg(err?.message ?? "Falha ao solicitar saque/resgate.");
     } finally {
       setSubmitting(false);
     }
