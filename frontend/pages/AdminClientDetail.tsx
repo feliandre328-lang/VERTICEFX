@@ -163,6 +163,61 @@ export default function AdminClientDetail() {
   const u = data?.user;
   const p = data?.profile;
   const totalGainedCents = data?.totals?.total_gained_cents ?? 0;
+  const clientTotals = useMemo(() => {
+    const investments = data?.investments ?? [];
+    const withdrawals = data?.withdrawals ?? [];
+
+    const totalAportadoCents = investments
+      .filter((inv) => (inv.status || "").toUpperCase() === "APPROVED")
+      .reduce((sum, inv) => sum + Number(inv.amount_cents || 0), 0);
+
+    const resgatesAportesCents = withdrawals
+      .filter(
+        (w) =>
+          (w.withdrawal_type || "").toUpperCase() === "CAPITAL_REDEMPTION" &&
+          ["APPROVED", "PAID"].includes((w.status || "").toUpperCase())
+      )
+      .reduce((sum, w) => sum + Number(w.amount_cents || 0), 0);
+
+    const resgateAporteAgendadoCents = withdrawals
+      .filter(
+        (w) =>
+          (w.withdrawal_type || "").toUpperCase() === "CAPITAL_REDEMPTION" &&
+          (w.status || "").toUpperCase() === "PENDING"
+      )
+      .reduce((sum, w) => sum + Number(w.amount_cents || 0), 0);
+
+    const saquesSemanaisCents = withdrawals
+      .filter(
+        (w) =>
+          (w.withdrawal_type || "").toUpperCase() === "RESULT_SETTLEMENT" &&
+          ["APPROVED", "PAID"].includes((w.status || "").toUpperCase())
+      )
+      .reduce((sum, w) => sum + Number(w.amount_cents || 0), 0);
+
+    const saqueSemanalAgendadoCents = withdrawals
+      .filter(
+        (w) =>
+          (w.withdrawal_type || "").toUpperCase() === "RESULT_SETTLEMENT" &&
+          (w.status || "").toUpperCase() === "PENDING"
+      )
+      .reduce((sum, w) => sum + Number(w.amount_cents || 0), 0);
+
+    const aporteAtualCents = Math.max(totalAportadoCents - resgatesAportesCents, 0);
+    const saldoSaqueSemanalCents = Math.max(totalGainedCents - saquesSemanaisCents - saqueSemanalAgendadoCents, 0);
+    const patrimonioPrincipalCents = aporteAtualCents + saldoSaqueSemanalCents;
+
+    return {
+      totalAportadoCents,
+      aporteAtualCents,
+      saquesSemanaisCents,
+      resgatesAportesCents,
+      patrimonioPrincipalCents,
+      totalJaGanhoCents: totalGainedCents,
+      saqueSemanalAgendadoCents,
+      resgateAporteAgendadoCents,
+    };
+  }, [data?.investments, data?.withdrawals, totalGainedCents]);
 
   
 
@@ -300,33 +355,67 @@ export default function AdminClientDetail() {
                 <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
                   <div className="flex items-center gap-2">
                     <ArrowDownRight size={16} className="text-emerald-500" />
-                    <span className="text-sm text-slate-300">Aportado</span>
+                    <span className="text-sm text-slate-300">TOTAL APORTADO</span>
                   </div>
-                  <span className="font-mono text-slate-100">{money(data.totals.invested_cents)}</span>
-                </div>
-
-                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <ArrowUpRight size={16} className="text-amber-500" />
-                    <span className="text-sm text-slate-300">Sacado</span>
-                  </div>
-                  <span className="font-mono text-slate-100">{money(data.totals.withdrawn_cents)}</span>
+                  <span className="font-mono text-slate-100">{money(clientTotals.totalAportadoCents)}</span>
                 </div>
 
                 <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
                   <div className="flex items-center gap-2">
                     <Wallet size={16} className="text-blue-500" />
-                    <span className="text-sm text-slate-300">Saldo</span>
+                    <span className="text-sm text-slate-300">APORTE ATUAL</span>
                   </div>
-                  <span className="font-mono text-slate-100">{money(data.totals.balance_cents)}</span>
+                  <span className="font-mono text-slate-100">{money(clientTotals.aporteAtualCents)}</span>
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpRight size={16} className="text-amber-500" />
+                    <span className="text-sm text-slate-300">SAQUE SEMANAIS</span>
+                  </div>
+                  <span className="font-mono text-slate-100">{money(clientTotals.saquesSemanaisCents)}</span>
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpRight size={16} className="text-orange-400" />
+                    <span className="text-sm text-slate-300">RESGATES DE APORTES</span>
+                  </div>
+                  <span className="font-mono text-slate-100">{money(clientTotals.resgatesAportesCents)}</span>
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <Wallet size={16} className="text-cyan-400" />
+                    <span className="text-sm text-slate-300">PATRIMONIO PRINCIPAL</span>
+                  </div>
+                  <span className="font-mono text-slate-100">{money(clientTotals.patrimonioPrincipalCents)}</span>
                 </div>
 
                 <div className="flex items-center justify-between bg-emerald-900/10 border border-emerald-900/30 rounded-lg p-3">
                   <div className="flex items-center gap-2">
                     <TrendingUp size={16} className="text-emerald-500" />
-                    <span className="text-sm text-slate-200">Total Já Ganho</span>
+                    <span className="text-sm text-slate-200">TOTAL JA GANHO</span>
                   </div>
-                  <span className="font-mono text-emerald-300">{money(totalGainedCents)}</span>
+                  <span className="font-mono text-emerald-300">{money(clientTotals.totalJaGanhoCents)}</span>
+                </div>
+
+                <div className="border-t border-slate-800 my-1" />
+
+                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpRight size={16} className="text-amber-500" />
+                    <span className="text-sm text-slate-300">SAQUE SEMANAL AGENDADADO</span>
+                  </div>
+                  <span className="font-mono text-slate-100">{money(clientTotals.saqueSemanalAgendadoCents)}</span>
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <ArrowUpRight size={16} className="text-orange-400" />
+                    <span className="text-sm text-slate-300">RESGATE DE APORTE AGENDADO</span>
+                  </div>
+                  <span className="font-mono text-slate-100">{money(clientTotals.resgateAporteAgendadoCents)}</span>
                 </div>
               </div>
             </div>
