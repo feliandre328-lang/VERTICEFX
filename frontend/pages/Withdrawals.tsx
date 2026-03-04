@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SystemState } from "../types";
+import PasswordConfirmModal from "../components/PasswordConfirmModal";
 import {
   Wallet,
   ShieldCheck,
@@ -138,7 +139,11 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
   const [initialized, setInitialized] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordModalLoading, setPasswordModalLoading] = useState(false);
+  const [passwordModalError, setPasswordModalError] = useState("");
   const summaryRequestSeq = useRef(0);
+  const passwordModalResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
 
   async function loadWithdrawalData(
     referenceDate?: string,
@@ -287,6 +292,54 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
       ? scheduledDate >= capitalNextFriday
       : scheduledDate >= nextFriday);
 
+  const resolvePasswordModal = (confirmed: boolean) => {
+    const resolver = passwordModalResolverRef.current;
+    passwordModalResolverRef.current = null;
+    setPasswordModalOpen(false);
+    setPasswordModalLoading(false);
+    setPasswordModalError("");
+    resolver?.(confirmed);
+  };
+
+  const handlePasswordModalClose = () => {
+    if (passwordModalLoading) return;
+    resolvePasswordModal(false);
+  };
+
+  const handlePasswordModalConfirm = async (typedPassword: string) => {
+    if (!user?.username) {
+      setPasswordModalError("Usuario atual nao identificado. Faca login novamente.");
+      return;
+    }
+    if (!typedPassword) {
+      setPasswordModalError("Senha obrigatoria para confirmar a solicitacao.");
+      return;
+    }
+
+    try {
+      setPasswordModalLoading(true);
+      setPasswordModalError("");
+      await verifyCurrentUserPassword(user.username, typedPassword);
+      resolvePasswordModal(true);
+    } catch (err: any) {
+      setPasswordModalLoading(false);
+      setPasswordModalError(err?.message ?? "Senha invalida.");
+    }
+  };
+
+  const confirmWithdrawalWithUserPassword = async (): Promise<boolean> => {
+    if (!user?.username) {
+      setErrorMsg("Usuario atual nao identificado. Faca login novamente.");
+      return false;
+    }
+    setPasswordModalError("");
+    setPasswordModalLoading(false);
+    setPasswordModalOpen(true);
+    return new Promise((resolve) => {
+      passwordModalResolverRef.current = resolve;
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amountValue || !access) return;
@@ -304,18 +357,8 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
     try {
       setSubmitting(true);
       setErrorMsg("");
-      if (!user?.username) {
-        setErrorMsg("Usuario atual nao identificado. Faca login novamente.");
-        return;
-      }
-
-      const typedPassword = window.prompt("Digite sua senha para confirmar a solicitacao:");
-      if (typedPassword === null) return;
-      if (!typedPassword) {
-        setErrorMsg("Senha obrigatoria para confirmar a solicitacao.");
-        return;
-      }
-      await verifyCurrentUserPassword(user.username, typedPassword);
+      const confirmed = await confirmWithdrawalWithUserPassword();
+      if (!confirmed) return;
 
       await createWithdrawal(access, {
         withdrawal_type: type === "CAPITAL" ? "CAPITAL_REDEMPTION" : "RESULT_SETTLEMENT",
@@ -601,6 +644,17 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
           </div>
         </div>
       </div>
+
+      <PasswordConfirmModal
+        isOpen={passwordModalOpen}
+        title="Confirmar solicitacao"
+        description="Digite sua senha para confirmar o saque/resgate."
+        confirmLabel="Validar senha"
+        loading={passwordModalLoading}
+        error={passwordModalError}
+        onClose={handlePasswordModalClose}
+        onConfirm={handlePasswordModalConfirm}
+      />
     </div>
   );
 };

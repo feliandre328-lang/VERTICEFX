@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ShieldCheck, User, Mail, Lock, ChevronLeft } from "lucide-react";
+import { ShieldCheck, User, Mail, Lock, ChevronLeft, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../layouts/AuthContext";
 
 type View = "role" | "client" | "admin";
@@ -18,6 +18,7 @@ const Login: React.FC<Props> = ({ mode }) => {
   const [view, setView] = useState<View>(initialView);
   const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -28,6 +29,10 @@ const Login: React.FC<Props> = ({ mode }) => {
     else if (mode === "admin") setView("admin");
     else setView("role");
   }, [mode]);
+
+  useEffect(() => {
+    setShowPassword(false);
+  }, [view]);
 
   const title = useMemo(() => {
     if (view === "client") return "Acesso do Cliente";
@@ -41,6 +46,7 @@ const Login: React.FC<Props> = ({ mode }) => {
     setErrorMsg("");
     setPassword("");
     setUsernameOrEmail("");
+    setShowPassword(false);
 
     // ✅ Se mode foi informado, voltar deve levar pra rota correta, não pra seleção
     if (mode === "client") return nav("/login", { replace: true });
@@ -207,15 +213,24 @@ const Login: React.FC<Props> = ({ mode }) => {
               <div className="relative">
                 <Lock size={16} className="absolute left-3 top-3.5 text-slate-500" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 transition-all placeholder:text-slate-600"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-11 text-white focus:outline-none focus:border-blue-900 transition-all placeholder:text-slate-600"
                   placeholder="••••••••"
                   autoComplete="current-password"
                   required
                   disabled={loading}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-white"
+                  disabled={loading}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
               {!isAdmin && (
                 <div className="mt-2 text-right">

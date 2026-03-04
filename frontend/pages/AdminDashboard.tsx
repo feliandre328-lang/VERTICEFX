@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import StatCard from "../components/StatCard";
+import PasswordConfirmModal from "../components/PasswordConfirmModal";
 import {
   AlertCircle,
   CheckCircle,
@@ -73,6 +74,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [loadingList, setLoadingList] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [errMsg, setErrMsg] = useState<string>("");
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [passwordModalLoading, setPasswordModalLoading] = useState(false);
+  const [passwordModalError, setPasswordModalError] = useState("");
+  const passwordModalResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -155,26 +160,53 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   }, [access]);
 
   
+  const resolvePasswordModal = (confirmed: boolean) => {
+    const resolver = passwordModalResolverRef.current;
+    passwordModalResolverRef.current = null;
+    setPasswordModalOpen(false);
+    setPasswordModalLoading(false);
+    setPasswordModalError("");
+    resolver?.(confirmed);
+  };
+
+  const handlePasswordModalClose = () => {
+    if (passwordModalLoading) return;
+    resolvePasswordModal(false);
+  };
+
+  const handlePasswordModalConfirm = async (typedPassword: string) => {
+    if (!user?.username) {
+      setPasswordModalError("Usuario atual nao identificado. Faca login novamente.");
+      return;
+    }
+    if (!typedPassword) {
+      setPasswordModalError("Senha obrigatoria.");
+      return;
+    }
+
+    try {
+      setPasswordModalLoading(true);
+      setPasswordModalError("");
+      await verifyCurrentUserPassword(user.username, typedPassword);
+      resolvePasswordModal(true);
+    } catch (err: any) {
+      setPasswordModalLoading(false);
+      setPasswordModalError(err?.message ?? "Senha invalida.");
+    }
+  };
+
   const confirmDistributionWithUserPassword = async (): Promise<boolean> => {
     if (!user?.username) {
       alert("Usuario atual nao identificado. Faca login novamente.");
       return false;
     }
 
-    const typedPassword = window.prompt("Digite sua senha para confirmar a distribuicao:");
-    if (typedPassword === null) return false;
-    if (!typedPassword) {
-      alert("Senha obrigatoria.");
-      return false;
-    }
-
-    try {
-      await verifyCurrentUserPassword(user.username, typedPassword);
-      return true;
-    } catch (err: any) {
-      alert(err?.message ?? "Senha invalida.");
-      return false;
-    }
+    setPasswordModalError("");
+    setPasswordModalLoading(false);
+    setPasswordModalOpen(true);
+    return new Promise((resolve) => {
+      passwordModalResolverRef.current = resolve;
+    });
   };
 
   const handlePerformanceSubmit = async (e: React.FormEvent) => {
@@ -892,6 +924,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {renderContent()}
+
+      <PasswordConfirmModal
+        isOpen={passwordModalOpen}
+        title="Confirmar distribuicao"
+        description="Digite sua senha para autorizar a distribuicao."
+        confirmLabel="Validar senha"
+        loading={passwordModalLoading}
+        error={passwordModalError}
+        onClose={handlePasswordModalClose}
+        onConfirm={handlePasswordModalConfirm}
+      />
     </div>
   );
 };
