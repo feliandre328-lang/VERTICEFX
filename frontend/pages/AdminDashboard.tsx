@@ -72,6 +72,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [loadingList, setLoadingList] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [errMsg, setErrMsg] = useState<string>("");
+  const distributionPassphrase = "DISTRIBUIR";
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
@@ -161,6 +162,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       alert("Percentual de performance invalido.");
       return;
     }
+    const typedPassphrase = window.prompt('Digite a contra-senha para confirmar a distribuicao:');
+    if (typedPassphrase === null) return;
+    if (typedPassphrase.trim().toUpperCase() !== distributionPassphrase) {
+      alert("Contra-senha invalida. Distribuicao cancelada.");
+      return;
+    }
 
     createDailyPerformanceDistribution(access, { performance_percent: percent })
       .then(async (rows) => {
@@ -199,6 +206,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     if (selectedUserIds.length === 0) {
       alert("Selecione pelo menos 1 cliente.");
+      return;
+    }
+    const typedPassphrase = window.prompt('Digite a contra-senha para confirmar a distribuicao:');
+    if (typedPassphrase === null) return;
+    if (typedPassphrase.trim().toUpperCase() !== distributionPassphrase) {
+      alert("Contra-senha invalida. Distribuicao cancelada.");
       return;
     }
 
