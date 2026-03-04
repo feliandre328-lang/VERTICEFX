@@ -256,7 +256,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const eligibleClients = useMemo(() => {
     const grouped = new Map<
       number,
-      { user_id: number; username: string; email: string; approved_cents: number; capital_out_cents: number }
+      { user_id: number; username: string; email: string; invested_cents: number; capital_out_cents: number }
     >();
 
     for (const inv of adminItems) {
@@ -267,23 +267,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         user_id: inv.user_id,
         username: inv.user_username || `user-${inv.user_id}`,
         email: inv.user_email || "",
-        approved_cents: 0,
+        invested_cents: 0,
         capital_out_cents: 0,
       };
-      current.approved_cents += inv.amount_cents || 0;
+      current.invested_cents += inv.amount_cents || 0;
       grouped.set(inv.user_id, current);
     }
 
     for (const wd of adminWithdrawals) {
       if (wd.withdrawal_type !== "CAPITAL_REDEMPTION") continue;
-      if (wd.status === "REJECTED") continue;
+      if (wd.status !== "APPROVED" && wd.status !== "PAID") continue;
       if (!wd.user || wd.user <= 0) continue;
 
       const current = grouped.get(wd.user) || {
         user_id: wd.user,
         username: wd.username || `user-${wd.user}`,
         email: wd.email || "",
-        approved_cents: 0,
+        invested_cents: 0,
         capital_out_cents: 0,
       };
       current.capital_out_cents += wd.amount_cents || 0;
@@ -293,7 +293,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return [...grouped.values()]
       .map((row) => ({
         ...row,
-        eligible_cents: Math.max(row.approved_cents - row.capital_out_cents, 0),
+        eligible_cents: Math.max(row.invested_cents - row.capital_out_cents, 0),
       }))
       .filter((row) => row.eligible_cents > 0)
       .sort((a, b) => b.eligible_cents - a.eligible_cents);
@@ -502,8 +502,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <p className="text-[11px] text-slate-500 mt-2">
-                Base saldo clientes: Daily nao paga {formatCurrency(distributionsUnpaid)} + Ledger nao paga{" "}
-                {formatCurrency(ledgerManualUnpaid)} - Saques de resultado {formatCurrency(resultWithdrawals)}.
+                Base saldo clientes: Distribuiçao de Performance não liquidadas {formatCurrency(distributionsUnpaid)} +
+                Resgaste de Aporte não liquidados {formatCurrency(ledgerManualUnpaid)} - Saques Semanal{" "}
+                {formatCurrency(resultWithdrawals)}.
               </p>
             </div>
           </div>
@@ -597,7 +598,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               filteredEligibleClients.map((client) => {
                 const simulatedDistributionCents = Math.round(client.eligible_cents * previewPerformanceFactor);
                 const simulatedDistributionPositive = simulatedDistributionCents >= 0;
-                const netAporteCents = Math.max(client.approved_cents - client.capital_out_cents, 0);
+                const netAporteCents = Math.max(client.invested_cents - client.capital_out_cents, 0);
                 return (
                   <label
                     key={client.user_id}
@@ -645,7 +646,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {formatCurrency(moneyFromCents(netAporteCents))}
                         </p>
                         <p className="mt-0.5 text-[10px] text-slate-500">
-                          Bruto {formatCurrency(moneyFromCents(client.approved_cents))} - Resgatado{" "}
+                          Bruto {formatCurrency(moneyFromCents(client.invested_cents))} - Resgatado{" "}
                           {formatCurrency(moneyFromCents(client.capital_out_cents))}
                         </p>
                       </div>

@@ -252,28 +252,24 @@ class DailyPerformanceDistributionCreateSerializer(serializers.Serializer):
         if user_id:
             user_filter = Q(user_id=user_id)
 
+        # Base por cliente = soma dos aportes APPROVED - soma dos resgates de capital APPROVED.
         rows = (
             Investment.objects.filter(status=Investment.STATUS_APPROVED)
             .filter(user_filter)
             .filter(Q(paid_at__date__lte=ref_date) | Q(paid_at__isnull=True, created_at__date__lte=ref_date))
             .values("user")
-            .annotate(base_capital_cents=Sum("amount_cents"))
+            .annotate(total_aportado_cents=Sum("amount_cents"))
         )
 
         capital_out_rows = (
             WithdrawalRequest.objects.filter(
                 withdrawal_type=WithdrawalRequest.TYPE_CAPITAL_REDEMPTION,
                 status__in=[
-                    WithdrawalRequest.STATUS_PENDING,
                     WithdrawalRequest.STATUS_APPROVED,
                     WithdrawalRequest.STATUS_PAID,
                 ],
             )
             .filter(user_filter)
-            .filter(
-                Q(scheduled_for__lte=ref_date)
-                | Q(scheduled_for__isnull=True, requested_at__date__lte=ref_date)
-            )
             .values("user")
             .annotate(capital_out_cents=Sum("amount_cents"))
         )
@@ -287,7 +283,7 @@ class DailyPerformanceDistributionCreateSerializer(serializers.Serializer):
 
         for row in rows:
             user_row_id = int(row["user"])
-            base_cents = int(row["base_capital_cents"] or 0) - capital_out_by_user.get(user_row_id, 0)
+            base_cents = int(row["total_aportado_cents"] or 0) - capital_out_by_user.get(user_row_id, 0)
             if base_cents <= 0:
                 continue
 

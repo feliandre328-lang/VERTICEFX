@@ -163,11 +163,12 @@ setup_backend(){
   log "Instalando dependências do backend..."
   sudo -u "${APP_USER}" bash -lc "
     source '${VENV_DIR}/bin/activate' &&
-    pip install --upgrade pip wheel setuptools &&
+    python -m ensurepip --upgrade || true &&
+    python -m pip install --upgrade --force-reinstall pip setuptools wheel &&
     if [[ -f '${APP_DIR}/${BACKEND_DIR}/requirements_prod.txt' ]]; then
-      pip install -r '${APP_DIR}/${BACKEND_DIR}/requirements_prod.txt'
+      python -m pip install -r '${APP_DIR}/${BACKEND_DIR}/requirements_prod.txt'
     elif [[ -f '${APP_DIR}/${BACKEND_DIR}/requirements.txt' ]]; then
-      pip install -r '${APP_DIR}/${BACKEND_DIR}/requirements.txt'
+      python -m pip install -r '${APP_DIR}/${BACKEND_DIR}/requirements.txt'
     else
       echo 'requirements do backend não encontrados.' >&2
       exit 1

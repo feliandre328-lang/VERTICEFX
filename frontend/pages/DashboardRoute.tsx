@@ -28,7 +28,15 @@ function createLocalTxid() {
 
 export default function DashboardRoute() {
   const navigate = useNavigate();
-  const [systemState, setSystemState] = useState<SystemState>(() => FinanceService.getSystemState());
+  const [systemState, setSystemState] = useState<SystemState>(() => {
+    const base = FinanceService.getSystemState();
+    return {
+      ...base,
+      balanceCapital: 0,
+      balanceResults: 0,
+      totalContributed: 0,
+    };
+  });
   const access = useMemo(() => localStorage.getItem("access") || "", []);
   const [isPixOpen, setIsPixOpen] = useState(false);
   const [amountInput, setAmountInput] = useState<string>("500,00");
@@ -42,9 +50,12 @@ export default function DashboardRoute() {
     if (!access) return;
     try {
       const wd = await getWithdrawalSummary(access);
-      const balanceCapital = Number(wd.statement_net_cents || 0) / 100;
+      const investmentsBalance = Number(wd.investments_total_cents || 0) / 100;
+      const capitalRedemptionBalance = Number(wd.capital_reserved_total_cents || 0) / 100;
+      const weeklyWithdrawalBalance = Number(wd.available_result_cents || 0) / 100;
+      const balanceCapital = investmentsBalance - capitalRedemptionBalance + weeklyWithdrawalBalance;
       const balanceResults = Number(wd.daily_distribution_total_cents || 0) / 100;
-      const totalContributed = balanceCapital - balanceResults;
+      const totalContributed = investmentsBalance - capitalRedemptionBalance;
       setSystemState((prev) => ({
         ...prev,
         balanceCapital,
@@ -58,6 +69,12 @@ export default function DashboardRoute() {
 
   useEffect(() => {
     if (!access) return;
+    setSystemState((prev) => ({
+      ...prev,
+      balanceCapital: 0,
+      balanceResults: 0,
+      totalContributed: 0,
+    }));
     refreshDashboardSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access]);

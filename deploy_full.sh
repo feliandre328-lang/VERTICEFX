@@ -9,7 +9,9 @@ BACKEND_DIR="${APP_DIR}/backend"
 FRONTEND_DIR="${APP_DIR}/frontend"
 
 # ✅ MESMO VENV do gunicorn.service (ExecStart)
-VENV="${BACKEND_DIR}/backend_prod_venv"
+VENV_PRIMARY="${APP_DIR}/backend_prod_venv"
+VENV_LEGACY="${BACKEND_DIR}/backend_prod_venv"
+VENV=""
 
 DB_FILE="/home/ubuntu/data/db.sqlite3"
 BACKUP_DIR="/home/ubuntu/backups"
@@ -24,6 +26,33 @@ log(){ echo -e "\n\033[1;32m[OK]\033[0m $*"; }
 warn(){ echo -e "\n\033[1;33m[WARN]\033[0m $*"; }
 die(){ echo -e "\n\033[1;31m[ERR]\033[0m $*"; exit 1; }
 
+resolve_venv() {
+  if [ -d "$VENV_PRIMARY" ]; then
+    VENV="$VENV_PRIMARY"
+    if [ -d "$VENV_LEGACY" ]; then
+      warn "Existe venv legado em $VENV_LEGACY (ignorando). Venv usado: $VENV"
+    fi
+    return
+  fi
+
+  if [ -d "$VENV_LEGACY" ]; then
+    VENV="$VENV_LEGACY"
+    warn "Usando venv legado em $VENV. Recomendado mover para $VENV_PRIMARY"
+    return
+  fi
+
+  die "Venv nao encontrado em $VENV_PRIMARY nem em $VENV_LEGACY"
+}
+
+bootstrap_pip() {
+  if ! python -m pip --version >/dev/null 2>&1; then
+    log "pip corrompido ou ausente no venv. Reinstalando com ensurepip..."
+    python -m ensurepip --upgrade || die "Falha ao recuperar pip com ensurepip"
+  fi
+
+  python -m pip install --upgrade --force-reinstall pip setuptools wheel
+}
+
 ########################################
 # PRECHECKS
 ########################################
@@ -31,11 +60,7 @@ log "Checando diretórios..."
 [ -d "$APP_DIR" ] || die "APP_DIR não existe: $APP_DIR"
 [ -d "$BACKEND_DIR" ] || die "BACKEND_DIR não existe: $BACKEND_DIR"
 [ -d "$FRONTEND_DIR" ] || die "FRONTEND_DIR não existe: $FRONTEND_DIR"
-[ -d "$VENV" ] || die "VENV do gunicorn não existe: $VENV"
-
-if [ -d "${BACKEND_DIR}/backend_prod_venv" ]; then
-  warn "Existe um venv duplicado em ${BACKEND_DIR}/backend_prod_venv (evite confusão). O deploy usará: $VENV"
-fi
+resolve_venv
 
 log "Checando banco..."
 [ -f "$DB_FILE" ] || die "Banco não encontrado em: $DB_FILE (abortando para não criar SQLite vazio)"
@@ -76,8 +101,8 @@ source "${VENV}/bin/activate"
 
 log "Backend: instalando dependências..."
 cd "$BACKEND_DIR"
-pip install -r requirements.txt
-
+bootstrap_pip
+python -m pip install -r requirements.txt
 log "Backend: migrate..."
 python manage.py migrate --noinput
 
