@@ -31,6 +31,7 @@ import Transparency from "../pages/Transparency";
 
 import AdminDashboard from "../pages/AdminDashboard";
 import AdminClients from "../pages/AdminClients"; // ✅ NOVO
+import AdminBenefits from "../pages/AdminBenefits";
 
 function RequireAdmin({ children }: { children: React.ReactNode }) {
   const { role } = useAuth();
@@ -403,6 +404,15 @@ export default function AppShell() {
                 element={
                   <RequireAdmin>
                     <AdminClientDetail />
+                  </RequireAdmin>
+                }
+              />
+
+              <Route
+                path="admin/referrals"
+                element={
+                  <RequireAdmin>
+                    <AdminBenefits />
                   </RequireAdmin>
                 }
               />

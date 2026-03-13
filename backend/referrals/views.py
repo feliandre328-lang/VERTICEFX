@@ -1,15 +1,22 @@
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import ReferralInvite
 from .serializers import (
     AdminReferralActivateSerializer,
+    ReferralCodeResolveSerializer,
     ReferralInviteCreateSerializer,
     ReferralInviteSerializer,
     ReferralSummarySerializer,
+)
+from .services import (
+    MAX_COMMISSION_INVITES,
+    MULTILEVEL_COMMISSION_RATES_BP,
+    get_referral_slots_used,
+    resolve_referrer_by_code,
 )
 
 
@@ -19,6 +26,40 @@ class ReferralSummaryView(APIView):
     def get(self, request):
         data = ReferralSummarySerializer.build_for_user(request.user)
         out_ser = ReferralSummarySerializer(data=data)
+        out_ser.is_valid(raise_exception=True)
+        return Response(out_ser.data, status=status.HTTP_200_OK)
+
+
+class ReferralCodeResolveView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, code: str):
+        referrer = resolve_referrer_by_code(code)
+        if not referrer:
+            return Response({"detail": "Codigo de convite invalido."}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = getattr(referrer, "account_profile", None)
+        slots_used = get_referral_slots_used(referrer)
+        slots_remaining = max(MAX_COMMISSION_INVITES - slots_used, 0)
+
+        payload = {
+            "code": str(code or "").strip().upper(),
+            "referrer": {
+                "id": referrer.id,
+                "username": referrer.username,
+                "full_name": getattr(profile, "full_name", "") if profile else "",
+            },
+            "commission_invites_limit": MAX_COMMISSION_INVITES,
+            "commission_invites_used": slots_used,
+            "commission_invites_remaining": slots_remaining,
+            "commission_rates": {
+                "level_1_percent": MULTILEVEL_COMMISSION_RATES_BP[1] / 100,
+                "level_2_percent": MULTILEVEL_COMMISSION_RATES_BP[2] / 100,
+                "level_3_percent": MULTILEVEL_COMMISSION_RATES_BP[3] / 100,
+            },
+        }
+        out_ser = ReferralCodeResolveSerializer(data=payload)
         out_ser.is_valid(raise_exception=True)
         return Response(out_ser.data, status=status.HTTP_200_OK)
 

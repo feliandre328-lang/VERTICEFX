@@ -1,6 +1,8 @@
 // frontend/pages/AdminClientDetail.tsx
+
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+
 import {
   ArrowLeft,
   UserCheck,
@@ -14,16 +16,13 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   TrendingUp,
+  KeyRound,
+  User
 } from "lucide-react";
 
 import { useAuth } from "../layouts/AuthContext";
-import { API_BASE } from "../services/api"; // se no seu projeto API_BASE não é exportado, veja nota abaixo
+import { API_BASE } from "../services/api";
 
-
-
-
-
-// -------- Types (igual o backend retorna) --------
 type ClientStatement = {
   user: {
     id: number;
@@ -32,10 +31,12 @@ type ClientStatement = {
     is_active: boolean;
     date_joined: string;
   };
+
   profile: {
     full_name?: string;
     cpf?: string;
     phone?: string;
+    pix_key?: string;
     dob?: string | null;
     zip_code?: string;
     street?: string;
@@ -45,12 +46,14 @@ type ClientStatement = {
     city?: string;
     state?: string;
   };
+
   totals: {
     invested_cents: number;
     withdrawn_cents: number;
     balance_cents: number;
     total_gained_cents?: number;
   };
+
   investments: Array<{
     id: number;
     amount_cents: number;
@@ -59,6 +62,7 @@ type ClientStatement = {
     paid_at: string | null;
     external_ref: string | null;
   }>;
+
   withdrawals: Array<{
     id: number;
     amount_cents: number;
@@ -73,10 +77,10 @@ type ClientStatement = {
   }>;
 };
 
-// -------- helpers (sem depender do resto do api.ts) --------
 function authHeaders(access: string) {
   return { Authorization: `Bearer ${access}` };
 }
+
 async function readBodyOnce(res: Response) {
   const raw = await res.text();
   try {
@@ -85,6 +89,7 @@ async function readBodyOnce(res: Response) {
     return { raw, json: null };
   }
 }
+
 function formatError(raw: string, json: any) {
   if (json?.detail) return String(json.detail);
   if (!raw) return "Erro desconhecido.";
@@ -92,20 +97,25 @@ function formatError(raw: string, json: any) {
 }
 
 async function getAdminClientStatement(access: string, userId: number): Promise<ClientStatement> {
+
   const res = await fetch(`${API_BASE}/admin/clients/${userId}/statement/`, {
     headers: authHeaders(access),
   });
 
   const { raw, json } = await readBodyOnce(res);
+
   if (!res.ok) {
     throw new Error(`Falha ao buscar cliente: ${res.status} ${formatError(raw, json)}`);
   }
+
   return json as ClientStatement;
 }
 
 export default function AdminClientDetail() {
+
   const nav = useNavigate();
   const params = useParams();
+
   const { getAccessToken } = useAuth();
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
@@ -116,9 +126,13 @@ export default function AdminClientDetail() {
   const [err, setErr] = useState("");
 
   const money = (cents: number) =>
-    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format((cents ?? 0) / 100);
+    new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format((cents ?? 0) / 100);
 
   const badge = (text: string, kind: "ok" | "warn" | "bad" | "neutral") => {
+
     const cls =
       kind === "ok"
         ? "bg-emerald-900/20 text-emerald-400 border-emerald-900/30"
@@ -136,76 +150,58 @@ export default function AdminClientDetail() {
   };
 
   const load = async () => {
+
     if (!access) return;
-    if (!Number.isFinite(userId) || userId <= 0) {
-      setErr("ID inválido na URL.");
-      return;
-    }
 
     try {
+
       setLoading(true);
       setErr("");
+
       const s = await getAdminClientStatement(access, userId);
       setData(s);
+
     } catch (e: any) {
+
       setErr(e?.message ?? "Falha ao carregar cliente.");
       setData(null);
+
     } finally {
+
       setLoading(false);
+
     }
   };
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access, userId]);
 
   const u = data?.user;
   const p = data?.profile;
+
   const totalGainedCents = data?.totals?.total_gained_cents ?? 0;
+
   const clientTotals = useMemo(() => {
+
     const investments = data?.investments ?? [];
     const withdrawals = data?.withdrawals ?? [];
 
     const totalAportadoCents = investments
-      .filter((inv) => (inv.status || "").toUpperCase() === "APPROVED")
-      .reduce((sum, inv) => sum + Number(inv.amount_cents || 0), 0);
+      .filter((inv) => inv.status === "APPROVED")
+      .reduce((sum, inv) => sum + inv.amount_cents, 0);
 
     const resgatesAportesCents = withdrawals
-      .filter(
-        (w) =>
-          (w.withdrawal_type || "").toUpperCase() === "CAPITAL_REDEMPTION" &&
-          ["APPROVED", "PAID"].includes((w.status || "").toUpperCase())
-      )
-      .reduce((sum, w) => sum + Number(w.amount_cents || 0), 0);
-
-    const resgateAporteAgendadoCents = withdrawals
-      .filter(
-        (w) =>
-          (w.withdrawal_type || "").toUpperCase() === "CAPITAL_REDEMPTION" &&
-          (w.status || "").toUpperCase() === "PENDING"
-      )
-      .reduce((sum, w) => sum + Number(w.amount_cents || 0), 0);
+      .filter((w) => w.withdrawal_type === "CAPITAL_REDEMPTION" && ["APPROVED", "PAID"].includes(w.status))
+      .reduce((sum, w) => sum + w.amount_cents, 0);
 
     const saquesSemanaisCents = withdrawals
-      .filter(
-        (w) =>
-          (w.withdrawal_type || "").toUpperCase() === "RESULT_SETTLEMENT" &&
-          ["APPROVED", "PAID"].includes((w.status || "").toUpperCase())
-      )
-      .reduce((sum, w) => sum + Number(w.amount_cents || 0), 0);
-
-    const saqueSemanalAgendadoCents = withdrawals
-      .filter(
-        (w) =>
-          (w.withdrawal_type || "").toUpperCase() === "RESULT_SETTLEMENT" &&
-          (w.status || "").toUpperCase() === "PENDING"
-      )
-      .reduce((sum, w) => sum + Number(w.amount_cents || 0), 0);
+      .filter((w) => w.withdrawal_type === "RESULT_SETTLEMENT" && ["APPROVED", "PAID"].includes(w.status))
+      .reduce((sum, w) => sum + w.amount_cents, 0);
 
     const aporteAtualCents = Math.max(totalAportadoCents - resgatesAportesCents, 0);
-    const saldoSaqueSemanalCents = Math.max(totalGainedCents - saquesSemanaisCents - saqueSemanalAgendadoCents, 0);
-    const patrimonioPrincipalCents = aporteAtualCents + saldoSaqueSemanalCents;
+
+    const patrimonioPrincipalCents = aporteAtualCents + totalGainedCents;
 
     return {
       totalAportadoCents,
@@ -214,34 +210,20 @@ export default function AdminClientDetail() {
       resgatesAportesCents,
       patrimonioPrincipalCents,
       totalJaGanhoCents: totalGainedCents,
-      saqueSemanalAgendadoCents,
-      resgateAporteAgendadoCents,
     };
-  }, [data?.investments, data?.withdrawals, totalGainedCents]);
 
-  
-
-  const statusLabel = (status: string) => {
-    const s = (status || "").toUpperCase();
-    if (s === "APPROVED") return badge("Aprovado", "ok");
-    if (s === "PENDING") return badge("Pendente", "warn");
-    if (s === "REJECTED") return badge("Rejeitado", "bad");
-    if (s === "PAID") return badge("Pago", "ok");
-    return badge(status || "—", "neutral");
-  };
-
-  const typeLabel = (t: string) => {
-    const s = (t || "").toUpperCase();
-    if (s === "CAPITAL_REDEMPTION") return "Resgate de capital";
-    if (s === "RESULT_SETTLEMENT") return "Liquidação de resultado";
-    return t || "—";
-  };
+  }, [data]);
 
   return (
+
     <div className="space-y-4">
-      {/* Header */}
+
+      {/* HEADER */}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+
         <div className="flex items-center gap-3">
+
           <button
             onClick={() => nav("/app/admin/clients")}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-800 bg-slate-900 hover:bg-slate-800/50 text-slate-200 text-sm"
@@ -251,289 +233,169 @@ export default function AdminClientDetail() {
           </button>
 
           <div className="flex items-center gap-2">
-            <UserCheck className="text-emerald-500" size={18} />
+            <UserCheck className="text-emerald-500" size={18}/>
             <h1 className="text-lg font-bold text-white">Detalhes do Cliente</h1>
           </div>
+
         </div>
 
         <button
           onClick={load}
           disabled={loading}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-800 bg-slate-900 hover:bg-slate-800/50 text-slate-200 text-sm disabled:opacity-60"
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-800 bg-slate-900 hover:bg-slate-800/50 text-slate-200 text-sm"
         >
-          <RefreshCcw size={16} />
+          <RefreshCcw size={16}/>
           {loading ? "Atualizando..." : "Atualizar"}
         </button>
+
       </div>
 
-      {err ? (
+      {err && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {err}
         </div>
-      ) : null}
+      )}
 
-      {/* Loading */}
-      {loading && !data ? (
+      {loading && !data && (
         <div className="p-10 text-center text-slate-400 text-sm bg-slate-900 border border-slate-800 rounded-lg">
           Carregando cliente...
         </div>
-      ) : null}
+      )}
 
-      {/* Content */}
-      {data && u ? (
+      {data && u && (
+
         <>
-          {/* Top cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider">Cliente</p>
-                  <p className="text-white font-bold text-lg truncate">{p?.full_name || u.username}</p>
-                  <p className="text-[12px] text-slate-400 font-mono">ID #{u.id}</p>
-                  <div className="mt-4 text-xs text-slate-500">
-                Nascimento: <span className="text-slate-300">{p?.dob ? new Date(p.dob).toLocaleDateString("pt-BR") : "—"}</span>
-              </div>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+
+            {/* CLIENTE */}
+
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 xl:col-span-2">
+
+              <div className="flex items-start justify-between">
+
+                <div>
+
+                  <p className="text-xs text-slate-500 uppercase tracking-wider">
+                    Cliente
+                  </p>
+
+                  <p className="text-white font-bold text-lg">
+                    {p?.full_name || u.username}
+                  </p>
+
+                  <p className="text-xs text-slate-400 font-mono">
+                    ID #{u.id}
+                  </p>
+
                 </div>
-                <div className="shrink-0">
+
+                <div>
                   {u.is_active ? badge("Ativo", "ok") : badge("Inativo", "bad")}
                 </div>
+
               </div>
 
-              <div className="mt-4 space-y-2 text-sm">
+              <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+
                 <div className="flex items-center gap-2 text-slate-300">
-                  <Mail size={14} className="text-slate-500" />
-                  <span className="truncate">{ u.username || "sem-email"}</span>
+                  <User size={14} className="text-slate-500"/>
+                  <span>{u.username || "—"}</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-slate-300">
-                  <Phone size={14} className="text-slate-500" />
+                  <Mail size={14} className="text-slate-500"/>
+                  <span className="truncate">{u.email || "—"}</span>
+                </div>
+
+                <div className="flex items-center gap-2 text-slate-300">
+                  <Phone size={14} className="text-slate-500"/>
                   <span>{p?.phone || "—"}</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-slate-300">
-                  <IdCard size={14} className="text-slate-500" />
+                  <KeyRound size={14} className="text-slate-500"/>
+                  <span>{p?.pix_key || "—"}</span>
+                </div>
+
+                <div className="flex items-center gap-2 text-slate-300">
+                  <IdCard size={14} className="text-slate-500"/>
                   <span>{p?.cpf || "—"}</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-slate-300">
-                  <Calendar size={14} className="text-slate-500" />
+                  <Calendar size={14} className="text-slate-500"/>
                   <span>
-                    Cadastro:{" "}
-                    <span className="text-slate-200">
-                      {u.date_joined ? new Date(u.date_joined).toLocaleString("pt-BR") : "—"}
-                    </span>
+                    {u.date_joined
+                      ? new Date(u.date_joined).toLocaleDateString("pt-BR")
+                      : "—"}
                   </span>
                 </div>
+
               </div>
+
             </div>
+
+            {/* TOTAIS */}
 
             <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
-              <p className="text-xs text-slate-500 uppercase tracking-wider">Endereço</p>
 
-              <div className="mt-3 flex items-start gap-2 text-slate-300">
-                <MapPin size={16} className="text-slate-500 mt-0.5" />
-                <div className="text-sm">
-                  <p className="text-slate-200 font-semibold">
-                    {(p?.street || "—") + (p?.number ? `, ${p.number}` : "")}
-                  </p>
-                  <p className="text-slate-400">
-                    {(p?.neighborhood || "—") + (p?.city ? ` - ${p.city}` : "") + (p?.state ? `/${p.state}` : "")}
-                  </p>
-                  <p className="text-slate-500 text-xs mt-1">
-                    CEP: {p?.zip_code || "—"} {p?.complement ? ` • ${p.complement}` : ""}
-                  </p>
+              <p className="text-xs text-slate-500 uppercase tracking-wider">
+                Totais
+              </p>
+
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                <div className="flex justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
+                  <span className="text-slate-300 text-sm">Total aportado</span>
+                  <span className="font-mono text-white">
+                    {money(clientTotals.totalAportadoCents)}
+                  </span>
                 </div>
+
+                <div className="flex justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
+                  <span className="text-slate-300 text-sm">Aporte atual</span>
+                  <span className="font-mono text-white">
+                    {money(clientTotals.aporteAtualCents)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
+                  <span className="text-slate-300 text-sm">Saques semanais</span>
+                  <span className="font-mono text-white">
+                    {money(clientTotals.saquesSemanaisCents)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
+                  <span className="text-slate-300 text-sm">Resgates</span>
+                  <span className="font-mono text-white">
+                    {money(clientTotals.resgatesAportesCents)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
+                  <span className="text-slate-300 text-sm">Patrimônio</span>
+                  <span className="font-mono text-white">
+                    {money(clientTotals.patrimonioPrincipalCents)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between bg-emerald-900/20 border border-emerald-900/40 rounded-lg p-3">
+                  <span className="text-emerald-300 text-sm">Total ganho</span>
+                  <span className="font-mono text-emerald-400">
+                    {money(clientTotals.totalJaGanhoCents)}
+                  </span>
+                </div>
+
               </div>
 
-              
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
-              <p className="text-xs text-slate-500 uppercase tracking-wider">Totais</p>
-
-              <div className="mt-4 grid grid-cols-1 gap-3">
-                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <ArrowDownRight size={16} className="text-emerald-500" />
-                    <span className="text-sm text-slate-300">TOTAL APORTADO</span>
-                  </div>
-                  <span className="font-mono text-slate-100">{money(clientTotals.totalAportadoCents)}</span>
-                </div>
-
-                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <Wallet size={16} className="text-blue-500" />
-                    <span className="text-sm text-slate-300">APORTE ATUAL</span>
-                  </div>
-                  <span className="font-mono text-slate-100">{money(clientTotals.aporteAtualCents)}</span>
-                </div>
-
-                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <ArrowUpRight size={16} className="text-amber-500" />
-                    <span className="text-sm text-slate-300">SAQUE SEMANAIS</span>
-                  </div>
-                  <span className="font-mono text-slate-100">{money(clientTotals.saquesSemanaisCents)}</span>
-                </div>
-
-                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <ArrowUpRight size={16} className="text-orange-400" />
-                    <span className="text-sm text-slate-300">RESGATES DE APORTES</span>
-                  </div>
-                  <span className="font-mono text-slate-100">{money(clientTotals.resgatesAportesCents)}</span>
-                </div>
-
-                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <Wallet size={16} className="text-cyan-400" />
-                    <span className="text-sm text-slate-300">PATRIMONIO PRINCIPAL</span>
-                  </div>
-                  <span className="font-mono text-slate-100">{money(clientTotals.patrimonioPrincipalCents)}</span>
-                </div>
-
-                <div className="flex items-center justify-between bg-emerald-900/10 border border-emerald-900/30 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp size={16} className="text-emerald-500" />
-                    <span className="text-sm text-slate-200">TOTAL JA GANHO</span>
-                  </div>
-                  <span className="font-mono text-emerald-300">{money(clientTotals.totalJaGanhoCents)}</span>
-                </div>
-
-                <div className="border-t border-slate-800 my-1" />
-
-                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <ArrowUpRight size={16} className="text-amber-500" />
-                    <span className="text-sm text-slate-300">SAQUE SEMANAL AGENDADADO</span>
-                  </div>
-                  <span className="font-mono text-slate-100">{money(clientTotals.saqueSemanalAgendadoCents)}</span>
-                </div>
-
-                <div className="flex items-center justify-between bg-slate-950/30 border border-slate-800 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <ArrowUpRight size={16} className="text-orange-400" />
-                    <span className="text-sm text-slate-300">RESGATE DE APORTE AGENDADO</span>
-                  </div>
-                  <span className="font-mono text-slate-100">{money(clientTotals.resgateAporteAgendadoCents)}</span>
-                </div>
-              </div>
-            </div>
           </div>
 
-          {/* Investments */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-white">Aportes</h2>
-              <span className="text-xs text-slate-500">{data.investments.length} registro(s)</span>
-            </div>
-
-            {data.investments.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-sm">Nenhum aporte.</div>
-            ) : (
-              <div className="divide-y divide-slate-800">
-                {data.investments.map((inv) => (
-                  <div key={inv.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        {statusLabel(inv.status)}
-                        <span className="text-white font-bold">{money(inv.amount_cents)}</span>
-                        <span className="text-[11px] text-slate-600 font-mono">#{inv.id}</span>
-                      </div>
-
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        Criado:{" "}
-                        <span className="text-slate-300">
-                          {inv.created_at ? new Date(inv.created_at).toLocaleString("pt-BR") : "—"}
-                        </span>
-                        {inv.paid_at ? (
-                          <>
-                            {" "}• Pago:{" "}
-                            <span className="text-slate-300">{new Date(inv.paid_at).toLocaleString("pt-BR")}</span>
-                          </>
-                        ) : null}
-                      </p>
-
-                      {inv.external_ref ? (
-                        <p className="text-[10px] text-slate-600 mt-1 break-all">Ref: {inv.external_ref}</p>
-                      ) : null}
-                    </div>
-
-                    <div className="text-[11px] text-slate-500 md:text-right">
-                      {/* espaço pra futuras ações */}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Withdrawals */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-white">Resgates</h2>
-              <span className="text-xs text-slate-500">{data.withdrawals.length} registro(s)</span>
-            </div>
-
-            {data.withdrawals.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-sm">Nenhum resgate.</div>
-            ) : (
-              <div className="divide-y divide-slate-800">
-                {data.withdrawals.map((w) => (
-                  <div key={w.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {statusLabel(w.status)}
-                        <span className="text-white font-bold">{money(w.amount_cents)}</span>
-                        <span className="text-[11px] text-slate-600 font-mono">#{w.id}</span>
-                        <span className="text-[11px] text-slate-400">{typeLabel(w.withdrawal_type)}</span>
-                      </div>
-
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        Solicitado:{" "}
-                        <span className="text-slate-300">
-                          {w.requested_at ? new Date(w.requested_at).toLocaleString("pt-BR") : "—"}
-                        </span>
-                        {w.scheduled_for ? (
-                          <>
-                            {" "}• Agendado:{" "}
-                            <span className="text-slate-300">{new Date(w.scheduled_for).toLocaleDateString("pt-BR")}</span>
-                          </>
-                        ) : null}
-                        {w.paid_at ? (
-                          <>
-                            {" "}• Pago:{" "}
-                            <span className="text-slate-300">{new Date(w.paid_at).toLocaleString("pt-BR")}</span>
-                          </>
-                        ) : null}
-                      </p>
-
-                      {w.pix_key ? (
-                        <p className="text-[10px] text-slate-600 mt-1 break-all">PIX: {w.pix_key}</p>
-                      ) : null}
-
-                      {w.external_ref ? (
-                        <p className="text-[10px] text-slate-600 mt-1 break-all">Ref: {w.external_ref}</p>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </>
-      ) : null}
+      )}
+
     </div>
   );
 }
-
-
-/**
- * ⚠️ NOTA IMPORTANTE
- * Se der erro dizendo que API_BASE não existe:
- * - Abra frontend/services/api.ts
- * - Garanta que está exportado assim:
- *   export const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
- *
- * Se você NÃO quiser exportar API_BASE, me diga e eu adapto este arquivo pra chamar "/api" direto.
- */

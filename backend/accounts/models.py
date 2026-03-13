@@ -6,8 +6,12 @@ from django.db import models
 from django.core.exceptions import ValidationError
 
 
-def clean_cpf(value: str) -> str:
+def clean_digits(value: str) -> str:
     return re.sub(r"\D", "", value or "")
+
+
+def clean_cpf(value: str) -> str:
+    return clean_digits(value)
 
 
 def is_valid_cpf(cpf: str) -> bool:
@@ -23,14 +27,26 @@ def is_valid_cpf(cpf: str) -> bool:
 
     d1 = calc_digit(cpf[:9])
     d2 = calc_digit(cpf[:10])
+
     return cpf[-2:] == f"{d1}{d2}"
+
 
 def validate_cpf(value: str):
     cpf = clean_cpf(value)
     if not is_valid_cpf(cpf):
         raise ValidationError("CPF inválido.")
 
+
 class AccountProfile(models.Model):
+
+    PIX_KEY_TYPES = [
+        ("cpf", "CPF"),
+        ("cnpj", "CNPJ"),
+        ("phone", "Celular"),
+        ("email", "Email"),
+        ("random", "Chave Aleatória"),
+    ]
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -40,7 +56,7 @@ class AccountProfile(models.Model):
 
     full_name = models.CharField(max_length=150)
 
-    # CPF obrigatório: somente números, único
+    # CPF obrigatório
     cpf = models.CharField(
         max_length=14,
         unique=True,
@@ -50,6 +66,20 @@ class AccountProfile(models.Model):
     )
 
     phone = models.CharField(max_length=20, blank=True, default="")
+
+    pix_key_type = models.CharField(
+        max_length=10,
+        choices=PIX_KEY_TYPES,
+        blank=True,
+        default="",
+    )
+
+    pix_key = models.CharField(
+        max_length=140,
+        blank=True,
+        default="",
+    )
+
     dob = models.DateField(null=True, blank=True)
 
     zip_code = models.CharField(max_length=20, blank=True, default="")
@@ -70,9 +100,30 @@ class AccountProfile(models.Model):
             models.Index(fields=["created_at"]),
         ]
 
+    def clean(self):
+
+        if self.pix_key_type == "cpf":
+            key = clean_digits(self.pix_key)
+            if not is_valid_cpf(key):
+                raise ValidationError({"pix_key": "CPF da chave Pix inválido."})
+
+        if self.pix_key_type == "phone":
+            key = clean_digits(self.pix_key)
+            if len(key) < 10:
+                raise ValidationError({"pix_key": "Celular inválido para chave Pix."})
+
+        if self.pix_key_type == "email":
+            if "@" not in self.pix_key:
+                raise ValidationError({"pix_key": "Email inválido para chave Pix."})
+
     def save(self, *args, **kwargs):
+
         if self.cpf:
             self.cpf = clean_cpf(self.cpf)
+
+        if self.pix_key_type in ["cpf", "phone"]:
+            self.pix_key = clean_digits(self.pix_key)
+
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:

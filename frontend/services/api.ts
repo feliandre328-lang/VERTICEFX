@@ -120,6 +120,7 @@ export type Me = {
     full_name?: string;
     cpf?: string;
     phone?: string;
+    pix_key?: string;
     dob?: string | null;
     zip_code?: string;
     street?: string;
@@ -550,6 +551,45 @@ export async function listDailyPerformanceDistributions(access: string): Promise
   return items;
 }
 
+export async function listAdminPerformanceDistributions(
+  access: string,
+  params?: { reference_date?: string; user_id?: number | string }
+): Promise<DailyPerformanceDistribution[]> {
+  const url = withQuery(`${API_BASE}/admin/performance-distributions/`, params);
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(
+      `Falha ao listar distribuicoes admin: ${res.status} ${formatError(res.status, raw, json)}`
+    );
+  }
+  const normalize = (item: any): DailyPerformanceDistribution => ({
+    ...item,
+    result_cents: Number(item?.result_cents ?? 0),
+    base_capital_cents: Number(item?.base_capital_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(
+        `Falha ao listar distribuicoes admin: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`
+      );
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
 // -------------------- REFERRALS -------------------- //
 
 export type ReferralTier = {
@@ -565,6 +605,17 @@ export type ReferralSummary = {
   active_referrals_count: number;
   pending_referrals_count: number;
   total_credits_cents: number;
+  level_1_credits_cents: number;
+  level_2_credits_cents: number;
+  level_3_credits_cents: number;
+  commission_invites_limit: number;
+  commission_invites_used: number;
+  commission_invites_remaining: number;
+  commission_rates: {
+    level_1_percent: number;
+    level_2_percent: number;
+    level_3_percent: number;
+  };
   current_tier: ReferralTier;
   next_tier: ReferralTier | null;
   credits_to_next_cents: number;
@@ -573,14 +624,37 @@ export type ReferralSummary = {
 
 export type ReferralInvite = {
   id: number;
+  referrer?: number | null;
+  referrer_username?: string;
+  referrer_email?: string;
   referred_user: number | null;
   referred_username: string;
   referred_name: string;
   referred_email: string;
   status: "PENDING" | "ACTIVE" | string;
   credits_cents: number;
+  commission_eligible: boolean;
+  referral_level: number;
+  referral_code_used: string;
   joined_date: string;
   activated_at: string | null;
+};
+
+export type ReferralCodeResolve = {
+  code: string;
+  referrer: {
+    id: number;
+    username: string;
+    full_name: string;
+  };
+  commission_invites_limit: number;
+  commission_invites_used: number;
+  commission_invites_remaining: number;
+  commission_rates: {
+    level_1_percent: number;
+    level_2_percent: number;
+    level_3_percent: number;
+  };
 };
 
 export async function getReferralSummary(access: string): Promise<ReferralSummary> {
@@ -622,6 +696,53 @@ export async function createReferralInvite(
     throw new Error(`Falha ao criar indicacao: ${res.status} ${formatError(res.status, raw, json)}`);
   }
   return json as ReferralInvite;
+}
+
+export type AdminReferralInvite = ReferralInvite;
+
+export async function listAdminReferralInvites(
+  access: string,
+  params?: { status?: string; referrer_id?: number | string }
+): Promise<AdminReferralInvite[]> {
+  const url = withQuery(`${API_BASE}/admin/referrals/invites/`, params);
+
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar indicacoes (admin): ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  const items = asList<AdminReferralInvite>(json);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(
+        `Falha ao listar indicacoes (admin): ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`
+      );
+    }
+    items.push(...asList<AdminReferralInvite>(pageJson));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
+export async function resolveReferralCode(code: string): Promise<ReferralCodeResolve> {
+  const normalized = String(code || "").trim();
+  const res = await fetch(`${API_BASE}/referrals/resolve/${encodeURIComponent(normalized)}/`);
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao validar convite: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as ReferralCodeResolve;
 }
 
 // -------------------- ADMIN -------------------- //
@@ -858,6 +979,52 @@ export async function listAdminWithdrawals(
   return items;
 }
 
+export type AdminResultLedgerEntry = {
+  id: number;
+  user: number;
+  username: string;
+  amount_cents: number;
+  description: string;
+  external_ref: string | null;
+  created_at: string;
+  created_by: number | null;
+  created_by_username: string;
+};
+
+export async function listAdminResultLedger(
+  access: string,
+  params?: { user_id?: number | string }
+): Promise<AdminResultLedgerEntry[]> {
+  const url = withQuery(`${API_BASE}/admin/result-ledger/`, params);
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar ledger admin: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  const normalize = (item: any): AdminResultLedgerEntry => ({
+    ...item,
+    amount_cents: Number(item?.amount_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(`Falha ao listar ledger admin: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`);
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
 export async function approveAdminWithdrawal(access: string, id: number | string): Promise<AdminWithdrawalItem> {
   const res = await fetch(`${API_BASE}/admin/withdrawals/${id}/approve/`, {
     method: "POST",
@@ -920,6 +1087,7 @@ export type SignupPayload = {
   full_name: string;
   cpf: string;
   phone?: string;
+  pix_key?: string;
   dob?: string;
   zip_code?: string;
   street?: string;
@@ -928,11 +1096,12 @@ export type SignupPayload = {
   neighborhood?: string;
   city?: string;
   state?: string;
+  referral_code?: string;
 };
 
 export type SignupResponse = {
   user: { id: number; username: string; email: string };
-  profile: { full_name: string; cpf: string; phone: string };
+  profile: { full_name: string; cpf: string; phone: string; pix_key?: string };
   access: string;
   refresh: string;
 };

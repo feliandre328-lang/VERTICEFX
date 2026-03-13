@@ -23,6 +23,7 @@ from .serializers import (
 from .mp_service import mp_create_pix_payment
 from notifications.models import Notification
 from notifications.services import create_notification, notify_admins
+from referrals.services import register_commissions_for_approved_investment
 from withdrawals.models import DailyPerformanceDistribution, ResultLedgerEntry, WithdrawalRequest
 
 
@@ -69,6 +70,7 @@ class AdminInvestmentViewSet(viewsets.ReadOnlyModelViewSet):
         inv = self.get_object()
         inv.status = Investment.STATUS_APPROVED
         inv.save(update_fields=["status"])
+        register_commissions_for_approved_investment(inv, request.user)
         amount = Decimal(inv.amount_cents) / Decimal("100")
         create_notification(
             user=inv.user,

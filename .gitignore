@@ -49,3 +49,8 @@ staticfiles/
 # sh
 *.sh
 .sh
+
+/management/
+/tests/
+*/management/
+*/tests/

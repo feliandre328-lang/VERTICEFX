@@ -22,6 +22,7 @@ from withdrawals.views import (
 from referrals.views import (
     AdminReferralInviteViewSet,
     ClientReferralInviteViewSet,
+    ReferralCodeResolveView,
     ReferralSummaryView,
 )
 from notifications.views import NotificationViewSet
@@ -58,6 +59,7 @@ urlpatterns = [
     path("api/admin/summary/", AdminSummaryView.as_view()),
     path("api/withdrawals/summary/", WithdrawalSummaryView.as_view()),
     path("api/referrals/summary/", ReferralSummaryView.as_view()),
+    path("api/referrals/resolve/<str:code>/", ReferralCodeResolveView.as_view()),
     path("api/market/ticker/", MarketTickerView.as_view()),
 
 

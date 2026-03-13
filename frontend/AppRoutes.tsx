@@ -21,6 +21,7 @@ export default function AppRoutes() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/reset-password/new" element={<ResetPassword />} />
         <Route path="/signup" element={<SignUp />} />
+        <Route path="/invite/:code" element={<SignUp />} />
         <Route path="/2fa" element={<TwoFactorAuth />} />
         
 

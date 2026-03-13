@@ -6,7 +6,13 @@ from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import ReferralInvite, ReferralProfile
+from .models import ReferralCommission, ReferralInvite, ReferralProfile
+from .services import (
+    MAX_COMMISSION_INVITES,
+    MULTILEVEL_COMMISSION_RATES_BP,
+    ensure_referral_profile,
+    get_referral_slots_used,
+)
 
 
 User = get_user_model()
@@ -14,21 +20,42 @@ User = get_user_model()
 
 class ReferralInviteSerializer(serializers.ModelSerializer):
     referred_username = serializers.CharField(source="referred_user.username", read_only=True)
+    referrer_username = serializers.CharField(source="referrer.username", read_only=True)
+    referrer_email = serializers.CharField(source="referrer.email", read_only=True)
 
     class Meta:
         model = ReferralInvite
         fields = [
             "id",
+            "referrer",
+            "referrer_username",
+            "referrer_email",
             "referred_user",
             "referred_username",
             "referred_name",
             "referred_email",
             "status",
             "credits_cents",
+            "commission_eligible",
+            "referral_level",
+            "referral_code_used",
             "joined_date",
             "activated_at",
         ]
-        read_only_fields = ["id", "status", "credits_cents", "joined_date", "activated_at", "referred_username"]
+        read_only_fields = [
+            "id",
+            "referrer",
+            "referrer_username",
+            "referrer_email",
+            "status",
+            "credits_cents",
+            "commission_eligible",
+            "referral_level",
+            "referral_code_used",
+            "joined_date",
+            "activated_at",
+            "referred_username",
+        ]
 
 
 class ReferralInviteCreateSerializer(serializers.Serializer):
@@ -66,6 +93,13 @@ class ReferralSummarySerializer(serializers.Serializer):
     active_referrals_count = serializers.IntegerField()
     pending_referrals_count = serializers.IntegerField()
     total_credits_cents = serializers.IntegerField()
+    level_1_credits_cents = serializers.IntegerField()
+    level_2_credits_cents = serializers.IntegerField()
+    level_3_credits_cents = serializers.IntegerField()
+    commission_invites_limit = serializers.IntegerField()
+    commission_invites_used = serializers.IntegerField()
+    commission_invites_remaining = serializers.IntegerField()
+    commission_rates = serializers.DictField()
     current_tier = serializers.DictField()
     next_tier = serializers.DictField(allow_null=True)
     credits_to_next_cents = serializers.IntegerField()
@@ -75,19 +109,26 @@ class ReferralSummarySerializer(serializers.Serializer):
     def build_for_user(user):
         profile = ReferralProfile.objects.filter(user=user).first()
         if profile is None:
-            for _ in range(10):
-                try:
-                    profile = ReferralProfile.objects.create(user=user, referral_code=ReferralProfile.generate_code())
-                    break
-                except IntegrityError:
-                    continue
-            if profile is None:
-                raise serializers.ValidationError("Nao foi possivel gerar codigo de indicacao.")
+            try:
+                profile = ensure_referral_profile(user)
+            except IntegrityError as exc:
+                raise serializers.ValidationError("Nao foi possivel gerar codigo de indicacao.") from exc
 
         qs = ReferralInvite.objects.filter(referrer=user)
         active_count = qs.filter(status=ReferralInvite.STATUS_ACTIVE).count()
         pending_count = qs.filter(status=ReferralInvite.STATUS_PENDING).count()
-        total_credits_cents = qs.aggregate(s=Sum("credits_cents"))["s"] or 0
+        total_credits_cents = ReferralCommission.objects.filter(beneficiary=user).aggregate(s=Sum("amount_cents"))["s"] or 0
+        level_1_credits_cents = (
+            ReferralCommission.objects.filter(beneficiary=user, level=1).aggregate(s=Sum("amount_cents"))["s"] or 0
+        )
+        level_2_credits_cents = (
+            ReferralCommission.objects.filter(beneficiary=user, level=2).aggregate(s=Sum("amount_cents"))["s"] or 0
+        )
+        level_3_credits_cents = (
+            ReferralCommission.objects.filter(beneficiary=user, level=3).aggregate(s=Sum("amount_cents"))["s"] or 0
+        )
+        slots_used = get_referral_slots_used(user)
+        slots_remaining = max(MAX_COMMISSION_INVITES - slots_used, 0)
 
         tier_rules = [
             {"name": "Start", "min_credits_cents": 0, "min_active": 0, "fee_discount": "0%", "bonus_report": "Mensal"},
@@ -114,11 +155,31 @@ class ReferralSummarySerializer(serializers.Serializer):
             "active_referrals_count": active_count,
             "pending_referrals_count": pending_count,
             "total_credits_cents": total_credits_cents,
+            "level_1_credits_cents": level_1_credits_cents,
+            "level_2_credits_cents": level_2_credits_cents,
+            "level_3_credits_cents": level_3_credits_cents,
+            "commission_invites_limit": MAX_COMMISSION_INVITES,
+            "commission_invites_used": slots_used,
+            "commission_invites_remaining": slots_remaining,
+            "commission_rates": {
+                "level_1_percent": MULTILEVEL_COMMISSION_RATES_BP[1] / 100,
+                "level_2_percent": MULTILEVEL_COMMISSION_RATES_BP[2] / 100,
+                "level_3_percent": MULTILEVEL_COMMISSION_RATES_BP[3] / 100,
+            },
             "current_tier": current_tier,
             "next_tier": next_tier,
             "credits_to_next_cents": credits_to_next,
             "active_to_next": active_to_next,
         }
+
+
+class ReferralCodeResolveSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    referrer = serializers.DictField()
+    commission_invites_limit = serializers.IntegerField()
+    commission_invites_used = serializers.IntegerField()
+    commission_invites_remaining = serializers.IntegerField()
+    commission_rates = serializers.DictField()
 
 
 class AdminReferralActivateSerializer(serializers.Serializer):
@@ -140,16 +201,55 @@ class AdminReferralActivateSerializer(serializers.Serializer):
         if referred_user and referred_user == invite.referrer:
             raise serializers.ValidationError({"referred_user": "Referred user nao pode ser o proprio referrer."})
 
+        was_active = invite.status == ReferralInvite.STATUS_ACTIVE and invite.activated_at is not None
+
         invite.status = ReferralInvite.STATUS_ACTIVE
-        invite.activated_at = timezone.now()
+        if not was_active:
+            invite.activated_at = timezone.now()
         invite.credits_cents = credits_cents
+        if not was_active:
+            active_count = (
+                ReferralInvite.objects.filter(referrer=invite.referrer, status=ReferralInvite.STATUS_ACTIVE)
+                .exclude(id=invite.id)
+                .count()
+            )
+            eligible_count = (
+                ReferralInvite.objects.filter(
+                    referrer=invite.referrer,
+                    status=ReferralInvite.STATUS_ACTIVE,
+                    commission_eligible=True,
+                )
+                .exclude(id=invite.id)
+                .count()
+            )
+            invite.referral_level = active_count + 1
+            invite.commission_eligible = eligible_count < MAX_COMMISSION_INVITES
+        ref_profile = ensure_referral_profile(invite.referrer)
+        if not invite.referral_code_used:
+            invite.referral_code_used = ref_profile.referral_code
         if referred_user:
             invite.referred_user = referred_user
             if not invite.referred_name:
                 invite.referred_name = referred_user.username
             if not invite.referred_email:
                 invite.referred_email = referred_user.email or ""
+            referred_profile = ensure_referral_profile(referred_user)
+            if referred_profile.referrer_id not in (None, invite.referrer_id):
+                raise serializers.ValidationError({"referred_user": "Este cadastro ja esta vinculado a outro convite."})
+            if referred_profile.referrer_id != invite.referrer_id:
+                referred_profile.referrer = invite.referrer
+                referred_profile.save(update_fields=["referrer"])
         invite.save(
-            update_fields=["status", "activated_at", "credits_cents", "referred_user", "referred_name", "referred_email"]
+            update_fields=[
+                "status",
+                "activated_at",
+                "credits_cents",
+                "referral_level",
+                "commission_eligible",
+                "referred_user",
+                "referred_name",
+                "referred_email",
+                "referral_code_used",
+            ]
         )
         return invite

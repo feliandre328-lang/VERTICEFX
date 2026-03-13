@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   User,
   Mail,
@@ -13,11 +13,13 @@ import {
   PlusSquare,
   Map,
   CheckCircle,
+  IdCard,
+  KeyRound,
 } from "lucide-react";
 
 interface SignUpProps {
   onSignUp?: (data: any) => void;
-  onBackToLogin: () => void;
+  onBackToLogin?: () => void;
 }
 
 const STEPS = [
@@ -153,14 +155,35 @@ type ViaCepAddress = {
   uf: string;
 };
 
+type ReferralResolveResponse = {
+  code: string;
+  referrer: {
+    id: number;
+    username: string;
+    full_name?: string;
+  };
+  commission_invites_limit?: number;
+  commission_invites_remaining?: number;
+};
+
 export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
   const navigate = useNavigate();
+  const { code: inviteCodeParam } = useParams<{ code?: string }>();
+  const inviteCode = useMemo(
+    () => (inviteCodeParam || "").trim().toUpperCase(),
+    [inviteCodeParam]
+  );
 
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
   const [apiError, setApiError] = useState<string | null>(null);
   const [apiSuccess, setApiSuccess] = useState<string | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteResolved, setInviteResolved] = useState(!inviteCode);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteReferrer, setInviteReferrer] = useState<string>("");
+  const [inviteSlotsRemaining, setInviteSlotsRemaining] = useState<number | null>(null);
 
   const [cepLoading, setCepLoading] = useState(false);
   const [cepError, setCepError] = useState<string | null>(null);
@@ -185,12 +208,15 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
 
   const [formData, setFormData] = useState({
     name: "",
+    username: "",
     email: "",
     password: "",
     confirmPassword: "",
     dob: "",
     cpf: "",
     phone: "",
+    pixKeyType: "",
+    pixKey: "",
     zip: "",
     street: "",
     number: "",
@@ -213,6 +239,67 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
     }, 150);
     return () => window.clearTimeout(t);
   }, [step]);
+
+  useEffect(() => {
+    if (!inviteCode) {
+      setInviteLoading(false);
+      setInviteResolved(true);
+      setInviteError(null);
+      setInviteReferrer("");
+      setInviteSlotsRemaining(null);
+      return;
+    }
+
+    const abort = new AbortController();
+
+    const loadInvite = async () => {
+      try {
+        setInviteLoading(true);
+        setInviteResolved(false);
+        setInviteError(null);
+
+        const res = await fetch(
+          `${API_BASE}/referrals/resolve/${encodeURIComponent(inviteCode)}/`,
+          { signal: abort.signal }
+        );
+        const { raw, json } = await readBody(res);
+
+        if (!res.ok) {
+          const fallback = raw?.trim()
+            ? raw
+            : `Convite invalido (HTTP ${res.status} ${res.statusText}).`;
+          setInviteError(formatDrfError(json, fallback));
+          setInviteResolved(false);
+          return;
+        }
+
+        const payload = (json ?? {}) as ReferralResolveResponse;
+        const referrerName =
+          payload?.referrer?.full_name?.trim() ||
+          payload?.referrer?.username?.trim() ||
+          "";
+
+        setInviteReferrer(referrerName);
+        const remaining =
+          typeof payload.commission_invites_remaining === "number"
+            ? payload.commission_invites_remaining
+            : null;
+        setInviteSlotsRemaining(remaining);
+        setInviteResolved(true);
+      } catch (err: any) {
+        if (abort.signal.aborted) return;
+        setInviteError(err?.message ?? "Nao foi possivel validar o convite.");
+        setInviteResolved(false);
+      } finally {
+        if (!abort.signal.aborted) {
+          setInviteLoading(false);
+        }
+      }
+    };
+
+    loadInvite();
+    return () => abort.abort();
+  }, [inviteCode]);
 
   // Computed validity (premium)
   const cpfOk = useMemo(() => {
@@ -376,6 +463,7 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
       case 1:
         return (
           formData.name.trim() &&
+          formData.username.trim() &&
           formData.email.trim() &&
           formData.password &&
           formData.password === formData.confirmPassword
@@ -405,6 +493,10 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
     e.preventDefault();
     setApiError(null);
     setApiSuccess(null);
+    if (inviteCode && (!inviteResolved || inviteError)) {
+      setApiError(inviteError || "Convite invalido.");
+      return;
+    }
 
     // trava final premium (evita request inútil)
     handleCpfBlur();
@@ -424,7 +516,8 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
     }
 
     const payload = {
-      username: formData.email,
+      username: formData.username.trim(),
+      email: formData.email.trim(),
       full_name: formData.name,
       password: formData.password,
       password2: formData.confirmPassword,
@@ -432,6 +525,9 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
       dob: formData.dob,
       cpf: onlyDigits(formData.cpf),
       phone: onlyDigits(formData.phone),
+
+      pix_key_type: formData.pixKeyType,
+      pix_key: formData.pixKey.trim(),
       zip_code: onlyDigits(formData.zip),
 
       street: formData.street,
@@ -440,6 +536,7 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
       neighborhood: formData.neighborhood,
       city: formData.city,
       state: formData.state,
+      referral_code: inviteCode || undefined,
     };
 
     try {
@@ -491,6 +588,17 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
               icon={User}
               value={formData.name}
               onChange={handleInputChange}
+              required
+            />
+
+            <InputField
+              name="username"
+              label="Usuario"
+              icon={IdCard}
+              value={formData.username}
+              onChange={handleInputChange}
+              placeholder="seu_usuario"
+              autoCapitalize="none"
               required
             />
 
@@ -576,6 +684,46 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
               invalid={!!phoneError}
             />
             {phoneError ? <p className="text-xs text-red-300 -mt-2">{phoneError}</p> : null}
+
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Tipo de Chave Pix
+              </label>
+
+              <select
+                value={formData.pixKeyType}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    pixKeyType: e.target.value,
+                  }))
+                }
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 px-4 text-white focus:outline-none focus:border-blue-900"
+              >
+                <option value="cpf">CPF</option>
+                <option value="cnpj">CNPJ</option>
+                <option value="phone">Celular</option>
+                <option value="email">Email</option>
+                <option value="random">Chave Aleatória</option>
+              </select>
+            </div>
+
+            <InputField
+              name="pixKey"
+              label="Chave Pix"
+              icon={KeyRound}
+              value={formData.pixKey}
+              onChange={handleInputChange}
+              placeholder="CPF, email, telefone ou chave aleatoria"
+              autoCapitalize="none"
+            />
+
+            <p className="text-xs text-slate-600 text-center">
+              A chave Pix sera usada para receber saques e resgates de capital. Deve estar no mesmo nome do cliente.
+            </p>
+
+
 
             <p className="text-xs text-slate-600 text-center">
               Dica: digite só números — a máscara aplica automaticamente.
@@ -768,6 +916,22 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
           <p className="text-slate-500 text-sm mt-1">Processo de cadastro seguro</p>
         </div>
 
+        {inviteCode ? (
+          <div className="mb-6 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-300">
+            {inviteLoading ? (
+              <span>Validando convite...</span>
+            ) : inviteError ? (
+              <span className="text-red-300">{inviteError}</span>
+            ) : (
+              <span>
+                Convite {inviteCode} valido
+                {inviteReferrer ? ` - Indicador: ${inviteReferrer}` : ""}
+                {inviteSlotsRemaining !== null ? ` - Comissao restante: ${inviteSlotsRemaining}/3` : ""}
+              </span>
+            )}
+          </div>
+        ) : null}
+
         {/* Progress Bar */}
         <div className="flex items-center justify-between mb-8 px-2">
           {STEPS.map((s, index) => (
@@ -888,3 +1052,5 @@ const InputField = ({
     </div>
   </div>
 );
+
+

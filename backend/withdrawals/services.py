@@ -5,7 +5,7 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from portfolio.models import Investment
-from .models import DailyPerformanceDistribution, WithdrawalRequest
+from .models import DailyPerformanceDistribution, ResultLedgerEntry, WithdrawalRequest
 
 
 RESERVED_WITHDRAWAL_STATUSES = [
@@ -71,12 +71,28 @@ def get_user_withdrawal_balances(user, reference_date: date | None = None):
             or 0
         )
 
+        result_ledger_manual_total_cents = (
+            ResultLedgerEntry.objects.filter(user=user)
+            .exclude(external_ref__startswith="perf-")
+            .aggregate(s=Sum("amount_cents"))["s"]
+            or 0
+        )
+
         result_ledger_cents = (
             DailyPerformanceDistribution.objects.filter(user=user, reference_date__lte=capital_cutoff_date).aggregate(
                 s=Sum("result_cents")
             )["s"]
             or 0
         )
+
+        result_ledger_manual_cents = (
+            ResultLedgerEntry.objects.filter(user=user)
+            .exclude(external_ref__startswith="perf-")
+            .filter(created_at__date__lte=capital_cutoff_date)
+            .aggregate(s=Sum("amount_cents"))["s"]
+            or 0
+        )
+        result_ledger_cents += result_ledger_manual_cents
 
         result_reserved_cents = (
             WithdrawalRequest.objects.filter(
@@ -127,7 +143,9 @@ def get_user_withdrawal_balances(user, reference_date: date | None = None):
         capital_reserved_cents = 0
         capital_reserved_total_cents = 0
         daily_distribution_total_cents = 0
+        result_ledger_manual_total_cents = 0
         result_ledger_cents = 0
+        result_ledger_manual_cents = 0
         result_reserved_cents = 0
         result_reserved_total_cents = 0
         withdrawals_total_cents = 0
@@ -138,7 +156,12 @@ def get_user_withdrawal_balances(user, reference_date: date | None = None):
     # descontando o que já está reservado por solicitações.
     available_capital_cents = max(liquid_capital_cents - capital_reserved_cents, 0)
     available_result_cents = max(result_ledger_cents - result_reserved_cents, 0)
-    statement_net_cents = investments_total_cents + daily_distribution_total_cents - withdrawals_total_cents
+    statement_net_cents = (
+        investments_total_cents
+        + daily_distribution_total_cents
+        + result_ledger_manual_total_cents
+        - withdrawals_total_cents
+    )
 
     return {
         "available_capital_cents": available_capital_cents,

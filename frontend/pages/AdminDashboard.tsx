@@ -12,6 +12,7 @@ import {
   UserCheck,
   ShieldCheck,
   ShieldOff,
+  X,
 } from "lucide-react";
 
 import { SystemState } from "../types";
@@ -19,13 +20,17 @@ import { useAuth } from "../layouts/AuthContext";
 import {
   createDailyPerformanceDistribution,
   listAdminInvestments,
+  listAdminPerformanceDistributions,
   listAdminWithdrawals,
+  listAdminResultLedger,
   type AdminSummary,
+  type AdminResultLedgerEntry,
   type AdminWithdrawalItem,
   approveInvestment,
   rejectInvestment,
   getAdminSummary,
   verifyCurrentUserPassword,
+  type DailyPerformanceDistribution,
 } from "../services/api";
 
 type AdminInvestmentItem = {
@@ -70,6 +75,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [adminItems, setAdminItems] = useState<AdminInvestmentItem[]>([]);
   const [adminWithdrawals, setAdminWithdrawals] = useState<AdminWithdrawalItem[]>([]);
   const [adminSummary, setAdminSummary] = useState<AdminSummary | null>(null);
+  const [balanceModalOpen, setBalanceModalOpen] = useState(false);
+  const [balanceModalLoading, setBalanceModalLoading] = useState(false);
+  const [balanceModalError, setBalanceModalError] = useState("");
+  const [commissionEntries, setCommissionEntries] = useState<AdminResultLedgerEntry[]>([]);
+  const [manualLedgerEntries, setManualLedgerEntries] = useState<AdminResultLedgerEntry[]>([]);
+  const [performanceEntries, setPerformanceEntries] = useState<DailyPerformanceDistribution[]>([]);
 
   const [loadingList, setLoadingList] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -81,6 +92,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
+  const formatDateTime = (value?: string | null) =>
+    value ? new Date(value).toLocaleString("pt-BR") : "â€”";
+  const withdrawalStatusLabel = (status: string) => {
+    if (status === "PENDING") return "Pendente";
+    if (status === "APPROVED") return "Aprovado";
+    if (status === "PAID") return "Pago";
+    if (status === "REJECTED") return "Rejeitado";
+    return status;
+  };
 
   const moneyFromCents = (cents: number) => cents / 100;
   const normalizeSearch = (value: string) =>
@@ -130,7 +150,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       // ✅ ordena do mais antigo -> mais novo (menor data/hora primeiro)
       const sorted = [...data].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 
       setAdminItems(sorted);
@@ -141,6 +161,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setLoadingList(false);
     }
   }
+
+  const openBalanceModal = async () => {
+    setBalanceModalOpen(true);
+    if (!access) return;
+    try {
+      setBalanceModalLoading(true);
+      setBalanceModalError("");
+      const [entries, perfRows] = await Promise.all([
+        listAdminResultLedger(access),
+        listAdminPerformanceDistributions(access),
+      ]);
+      const filtered = entries.filter((entry) => {
+        const ref = (entry.external_ref || "").toLowerCase();
+        const desc = (entry.description || "").toLowerCase();
+        return ref.startsWith("ref-comm-") || desc.includes("comissao de indicacao");
+      });
+      const manual = entries.filter((entry) => {
+        const ref = (entry.external_ref || "").toLowerCase();
+        const desc = (entry.description || "").toLowerCase();
+        const isPerf = ref.startsWith("perf-");
+        const isComm = ref.startsWith("ref-comm-") || desc.includes("comissao de indicacao");
+        return !isPerf && !isComm;
+      });
+      const perfSorted = [...perfRows].sort(
+        (a, b) => new Date(b.reference_date).getTime() - new Date(a.reference_date).getTime()
+      );
+      const sorted = [...filtered].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      setCommissionEntries(sorted);
+      setManualLedgerEntries(manual);
+      setPerformanceEntries(perfSorted);
+    } catch (err: any) {
+      setBalanceModalError(err?.message ?? "Falha ao carregar comissoes.");
+    } finally {
+      setBalanceModalLoading(false);
+    }
+  };
+
+  const closeBalanceModal = () => setBalanceModalOpen(false);
 
   // ✅ carrega ao abrir tela / mudar role
   useEffect(() => {
@@ -373,6 +433,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     [filteredEligibleClients]
   );
 
+  const weeklyWithdrawals = useMemo(
+    () =>
+      [...adminWithdrawals]
+        .filter((w) => w.withdrawal_type === "RESULT_SETTLEMENT")
+        .sort((a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime()),
+    [adminWithdrawals]
+  );
+
+  const capitalWithdrawals = useMemo(
+    () =>
+      [...adminWithdrawals]
+        .filter((w) => w.withdrawal_type === "CAPITAL_REDEMPTION")
+        .sort((a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime()),
+    [adminWithdrawals]
+  );
+
+  const commissionTotalCents = useMemo(
+    () => commissionEntries.reduce((sum, entry) => sum + (entry.amount_cents || 0), 0),
+    [commissionEntries]
+  );
+  const manualLedgerTotalCents = useMemo(
+    () => manualLedgerEntries.reduce((sum, entry) => sum + (entry.amount_cents || 0), 0),
+    [manualLedgerEntries]
+  );
+  const performanceTotalCents = useMemo(
+    () => performanceEntries.reduce((sum, entry) => sum + (entry.result_cents || 0), 0),
+    [performanceEntries]
+  );
+
+  const weeklyWithdrawalsTotalCents = useMemo(
+    () => weeklyWithdrawals.reduce((sum, w) => sum + (w.amount_cents || 0), 0),
+    [weeklyWithdrawals]
+  );
+
+  const capitalWithdrawalsTotalCents = useMemo(
+    () => capitalWithdrawals.reduce((sum, w) => sum + (w.amount_cents || 0), 0),
+    [capitalWithdrawals]
+  );
+
+  const clientsBalanceCents = useMemo(
+    () => safeNumber(adminSummary?.clients_result_balance_cents, 0),
+    [adminSummary]
+  );
+
   const renderStatsSection = () => {
     const tvl = safeNumber(adminSummary?.tvl_cents, 0) / 100;
     const pendingValue = safeNumber(adminSummary?.pending_cents, 0) / 100;
@@ -530,27 +634,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 TVL em gestao + saldo de todos os clientes (distribuicoes/ledger).
               </p>
 
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500">TVL</p>
-                  <p className="text-sm font-semibold text-emerald-400">{formatCurrency(tvl)}</p>
+              <div className="mt-4 space-y-3">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-wider text-slate-500">TVL</p>
+                  <p className="mt-1 text-base sm:text-lg font-bold text-emerald-400 whitespace-nowrap">
+                    {formatCurrency(tvl)}
+                  </p>
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500">Saldo Clientes</p>
-                  <p className="text-sm font-semibold text-blue-300">{formatCurrency(clientsBalance)}</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={openBalanceModal}
+                  className="w-full rounded-lg border border-slate-800 bg-slate-950/40 px-4 py-3 text-left hover:border-slate-700 hover:bg-slate-950/60 transition-colors"
+                >
+                  <p className="text-[11px] uppercase tracking-wider text-slate-500">Saldo Clientes</p>
+                  <p className="mt-1 text-base sm:text-lg font-bold text-blue-300 whitespace-nowrap">
+                    {formatCurrency(clientsBalance)}
+                  </p>
+                  <p className="mt-1 text-[10px] text-slate-500">Clique para ver detalhes</p>
+                </button>
                 <div
-                  className={`rounded-lg border px-3 py-2 ${
+                  className={`rounded-lg border px-4 py-3 ${
                     simulatedClientsGainPositive
                       ? "border-emerald-900/40 bg-emerald-900/10"
                       : "border-red-900/40 bg-red-900/10"
                   }`}
                 >
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500">
+                  <p className="text-[11px] uppercase tracking-wider text-slate-500">
                     Ganho Simulado TVL ({performancePercentLabel}%)
                   </p>
                   <p
-                    className={`text-sm font-semibold ${
+                    className={`mt-1 text-base sm:text-lg font-bold whitespace-nowrap ${
                       simulatedClientsGainPositive ? "text-emerald-300" : "text-red-300"
                     }`}
                   >
@@ -910,6 +1023,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const maxModalRows = 200;
+
   return (
     <div className="space-y-6">
       {renderAdminNavTabs()}
@@ -924,6 +1039,184 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {renderContent()}
+
+      {balanceModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <div className="absolute inset-0 bg-slate-950/80" onClick={closeBalanceModal} />
+          <div className="relative w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-lg shadow-xl max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+              <div>
+                <h3 className="text-base font-bold text-white">Detalhamento do Saldo Clientes</h3>
+                <p className="text-xs text-slate-500">
+                  Distribuicoes de performance, saques semanais, resgates e comissoes de indicacao.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeBalanceModal}
+                className="p-2 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800"
+                aria-label="Fechar"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto max-h-[80vh]">
+              {balanceModalLoading ? (
+                <div className="text-center text-sm text-slate-400 py-6">Carregando dados...</div>
+              ) : balanceModalError ? (
+                <div className="rounded border border-red-900/40 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+                  {balanceModalError}
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-wider text-slate-500">Saque Semanal</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-200">
+                        {formatCurrency(moneyFromCents(weeklyWithdrawalsTotalCents))}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-wider text-slate-500">Resgate de Capital</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-200">
+                        {formatCurrency(moneyFromCents(capitalWithdrawalsTotalCents))}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-slate-800 bg-slate-950/40 px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-wider text-slate-500">ComissÃµes de IndicaÃ§Ã£o</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-200">
+                        {formatCurrency(moneyFromCents(commissionTotalCents))}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-sm font-semibold text-white mb-2">Saques Semanais</h4>
+                      <div className="overflow-x-auto border border-slate-800 rounded-lg">
+                        <table className="w-full text-left text-xs text-slate-400">
+                          <thead className="bg-slate-950/50 text-slate-500 uppercase tracking-wider">
+                            <tr>
+                              <th className="px-4 py-3">Data</th>
+                              <th className="px-4 py-3">Cliente</th>
+                              <th className="px-4 py-3">Status</th>
+                              <th className="px-4 py-3 text-right">Valor</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800">
+                            {weeklyWithdrawals.slice(0, maxModalRows).map((item) => (
+                              <tr key={`weekly-${item.id}`}>
+                                <td className="px-4 py-3">{formatDateTime(item.requested_at)}</td>
+                                <td className="px-4 py-3">
+                                  {item.username || item.email || `#${item.user}`}
+                                </td>
+                                <td className="px-4 py-3">{withdrawalStatusLabel(item.status)}</td>
+                                <td className="px-4 py-3 text-right font-mono text-slate-200">
+                                  {formatCurrency(moneyFromCents(item.amount_cents))}
+                                </td>
+                              </tr>
+                            ))}
+                            {weeklyWithdrawals.length === 0 ? (
+                              <tr>
+                                <td className="px-4 py-3 text-slate-500" colSpan={4}>
+                                  Nenhum saque semanal registrado.
+                                </td>
+                              </tr>
+                            ) : null}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-sm font-semibold text-white mb-2">Resgates de Capital</h4>
+                      <div className="overflow-x-auto border border-slate-800 rounded-lg">
+                        <table className="w-full text-left text-xs text-slate-400">
+                          <thead className="bg-slate-950/50 text-slate-500 uppercase tracking-wider">
+                            <tr>
+                              <th className="px-4 py-3">Data</th>
+                              <th className="px-4 py-3">Cliente</th>
+                              <th className="px-4 py-3">Status</th>
+                              <th className="px-4 py-3 text-right">Valor</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800">
+                            {capitalWithdrawals.slice(0, maxModalRows).map((item) => (
+                              <tr key={`capital-${item.id}`}>
+                                <td className="px-4 py-3">{formatDateTime(item.requested_at)}</td>
+                                <td className="px-4 py-3">
+                                  {item.username || item.email || `#${item.user}`}
+                                </td>
+                                <td className="px-4 py-3">{withdrawalStatusLabel(item.status)}</td>
+                                <td className="px-4 py-3 text-right font-mono text-slate-200">
+                                  {formatCurrency(moneyFromCents(item.amount_cents))}
+                                </td>
+                              </tr>
+                            ))}
+                            {capitalWithdrawals.length === 0 ? (
+                              <tr>
+                                <td className="px-4 py-3 text-slate-500" colSpan={4}>
+                                  Nenhum resgate de capital registrado.
+                                </td>
+                              </tr>
+                            ) : null}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-sm font-semibold text-white mb-2">ComissÃµes de IndicaÃ§Ã£o</h4>
+                      <div className="overflow-x-auto border border-slate-800 rounded-lg">
+                        <table className="w-full text-left text-xs text-slate-400">
+                          <thead className="bg-slate-950/50 text-slate-500 uppercase tracking-wider">
+                            <tr>
+                              <th className="px-4 py-3">Data</th>
+                              <th className="px-4 py-3">BeneficiÃ¡rio</th>
+                              <th className="px-4 py-3">Status</th>
+                              <th className="px-4 py-3">Detalhe</th>
+                              <th className="px-4 py-3 text-right">Valor</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800">
+                            {commissionEntries.slice(0, maxModalRows).map((entry) => (
+                              <tr key={`comm-${entry.id}`}>
+                                <td className="px-4 py-3">{formatDateTime(entry.created_at)}</td>
+                                <td className="px-4 py-3">{entry.username || `#${entry.user}`}</td>
+                                <td className="px-4 py-3">Creditado</td>
+                                <td className="px-4 py-3 text-slate-500">{entry.description || "â€”"}</td>
+                                <td className="px-4 py-3 text-right font-mono text-slate-200">
+                                  {formatCurrency(moneyFromCents(entry.amount_cents))}
+                                </td>
+                              </tr>
+                            ))}
+                            {commissionEntries.length === 0 ? (
+                              <tr>
+                                <td className="px-4 py-3 text-slate-500" colSpan={5}>
+                                  Nenhuma comissÃ£o registrada.
+                                </td>
+                              </tr>
+                            ) : null}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {(weeklyWithdrawals.length > maxModalRows ||
+                      capitalWithdrawals.length > maxModalRows ||
+                      commissionEntries.length > maxModalRows) && (
+                      <p className="text-[11px] text-slate-500">
+                        Mostrando os Ãºltimos {maxModalRows} registros por categoria.
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <PasswordConfirmModal
         isOpen={passwordModalOpen}

@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { UserProfile, SystemState } from "../types";
-import { Copy, Users, Gift, Ticket, CheckCircle, Clock } from "lucide-react";
+import { Copy, Users, Gift, Ticket, CheckCircle, Clock, TrendingUp, TrendingDown } from "lucide-react";
 import { useAuth } from "../layouts/AuthContext";
 import {
   createReferralInvite,
-  fetchMe,
   getReferralSummary,
+  getWithdrawalSummary,
   listReferralInvites,
   type ReferralInvite,
   type ReferralSummary,
+  type WithdrawalSummary,
 } from "../services/api";
 
 interface ReferralsProps {
@@ -17,37 +18,37 @@ interface ReferralsProps {
 }
 
 const Referrals: React.FC<ReferralsProps> = ({ user }) => {
-  const { getAccessToken, user: authUser } = useAuth();
+  const { getAccessToken } = useAuth();
   const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
   const [summary, setSummary] = useState<ReferralSummary | null>(null);
+  const [withdrawalSummary, setWithdrawalSummary] = useState<WithdrawalSummary | null>(null);
   const [invites, setInvites] = useState<ReferralInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
-  const [resolvedUserId, setResolvedUserId] = useState<number | null>(authUser?.id ?? null);
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const inviteUserId = String(resolvedUserId ?? "").trim();
+  const referralCode = useMemo(() => (summary?.referral_code || "").trim(), [summary?.referral_code]);
   const referralLink = useMemo(() => {
     const origin = typeof window !== "undefined" ? window.location.origin : "https://verticefx.com.br";
-    return `${origin}/invite/VFX-${inviteUserId}`;
-  }, [inviteUserId]);
+    return referralCode ? `${origin}/invite/${referralCode}` : `${origin}/signup`;
+  }, [referralCode]);
 
   const loadData = async () => {
     if (!access) return;
     setLoading(true);
     setErrorMsg("");
     try {
-      const [summaryData, invitesData, meData] = await Promise.all([
+      const [summaryData, invitesData, withdrawalData] = await Promise.all([
         getReferralSummary(access),
         listReferralInvites(access),
-        fetchMe(access),
+        getWithdrawalSummary(access),
       ]);
       setSummary(summaryData);
       setInvites(invitesData);
-      setResolvedUserId(meData?.id ?? null);
+      setWithdrawalSummary(withdrawalData);
     } catch (err: any) {
       setErrorMsg(err?.message ?? "Falha ao carregar indicacoes.");
     } finally {
@@ -61,6 +62,10 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
   }, [access]);
 
   const handleCopy = () => {
+    if (!referralCode) {
+      setErrorMsg("Codigo de convite indisponivel.");
+      return;
+    }
     navigator.clipboard.writeText(referralLink);
     alert("Link de convite copiado!");
   };
@@ -91,6 +96,16 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
   const activeReferralsCount = summary?.active_referrals_count ?? 0;
   const pendingReferralsCount = summary?.pending_referrals_count ?? 0;
   const totalEarnings = (summary?.total_credits_cents ?? 0) / 100;
+  const inviteSlotsLimit = summary?.commission_invites_limit ?? 3;
+  const inviteSlotsRemaining = summary?.commission_invites_remaining ?? inviteSlotsLimit;
+  const level1Credits = (summary?.level_1_credits_cents ?? 0) / 100;
+  const level2Credits = (summary?.level_2_credits_cents ?? 0) / 100;
+  const level3Credits = (summary?.level_3_credits_cents ?? 0) / 100;
+  const investedTotal = (withdrawalSummary?.investments_total_cents ?? 0) / 100;
+  const withdrawnTotal = (withdrawalSummary?.withdrawals_total_cents ?? 0) / 100;
+  const level1Rate = summary?.commission_rates?.level_1_percent ?? 0;
+  const level2Rate = summary?.commission_rates?.level_2_percent ?? 0;
+  const level3Rate = summary?.commission_rates?.level_3_percent ?? 0;
   const currentTier = summary?.current_tier;
   const nextTier = summary?.next_tier;
   const creditsToNext = (summary?.credits_to_next_cents ?? 0) / 100;
@@ -108,9 +123,16 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
         <div className="relative z-10">
           <h2 className="text-xl md:text-2xl font-bold text-white mb-2">Programa de Beneficios</h2>
           <p className="text-slate-400 max-w-xl mx-auto text-sm mb-6 leading-relaxed">
-            Convide parceiros para a plataforma e acumule <strong>Creditos Operacionais</strong>. Use os creditos para
-            abater custos e liberar beneficios de nivel.
+            Convide parceiros para a plataforma e ganhe <strong>Comissao sobre os aportes</strong>. Apenas as 3 primeiras indicacoes geram comissao (5%, 3%, 2%).
           </p>
+          <div className="mb-5 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-400">
+            <span className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 font-mono">
+              Codigo: {referralCode || "VFX-XXXXXXX"}
+            </span>
+            <span className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1">
+              Comissoes restantes: {inviteSlotsRemaining}/{inviteSlotsLimit}
+            </span>
+          </div>
 
           <div className="flex flex-col md:flex-row items-center justify-center gap-3 max-w-lg mx-auto">
             <div className="bg-slate-950 border border-slate-800 rounded px-4 py-2.5 flex-1 w-full text-slate-300 font-mono text-xs truncate">
@@ -128,6 +150,9 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 md:p-6">
         <h3 className="text-sm font-bold text-white tracking-wide mb-4">Registrar Indicacao</h3>
+        <p className="text-xs text-slate-500 mb-4">
+          As 3 primeiras indicacoes geram comissao (5%, 3%, 2%). Restantes nao geram comissao.
+        </p>
         <form onSubmit={handleCreateInvite} className="grid md:grid-cols-3 gap-3">
           <input
             value={inviteName}
@@ -178,6 +203,48 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
           <div>
             <p className="text-slate-500 text-xs uppercase tracking-wider">Nivel de Cliente</p>
             <h3 className="text-xl font-bold text-white">{currentTier?.name ?? "Start"}</h3>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4 md:gap-6">
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-lg flex items-center gap-4">
+          <div className="p-3 bg-slate-800 rounded text-slate-400 border border-slate-700">
+            <TrendingUp size={20} />
+          </div>
+          <div>
+            <p className="text-slate-500 text-xs uppercase tracking-wider">Total Aportado</p>
+            <h3 className="text-xl font-bold text-white">{formatCurrency(investedTotal)}</h3>
+          </div>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-lg flex items-center gap-4">
+          <div className="p-3 bg-slate-800 rounded text-slate-400 border border-slate-700">
+            <TrendingDown size={20} />
+          </div>
+          <div>
+            <p className="text-slate-500 text-xs uppercase tracking-wider">Total Sacado</p>
+            <h3 className="text-xl font-bold text-white">{formatCurrency(withdrawnTotal)}</h3>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 md:p-6 space-y-3">
+        <h3 className="text-sm font-bold text-white tracking-wide">Comissao por Ordem da Indicacao</h3>
+        <div className="grid md:grid-cols-3 gap-3">
+          <div className="rounded border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">1a Indicacao</p>
+            <p className="text-lg font-semibold text-white mt-1">{level1Rate}%</p>
+            <p className="text-xs text-slate-500 mt-2">Creditos: {formatCurrency(level1Credits)}</p>
+          </div>
+          <div className="rounded border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">2a Indicacao</p>
+            <p className="text-lg font-semibold text-white mt-1">{level2Rate}%</p>
+            <p className="text-xs text-slate-500 mt-2">Creditos: {formatCurrency(level2Credits)}</p>
+          </div>
+          <div className="rounded border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">3a Indicacao</p>
+            <p className="text-lg font-semibold text-white mt-1">{level3Rate}%</p>
+            <p className="text-xs text-slate-500 mt-2">Creditos: {formatCurrency(level3Credits)}</p>
           </div>
         </div>
       </div>

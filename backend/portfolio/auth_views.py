@@ -20,6 +20,7 @@ class MeView(APIView):
                 "full_name": getattr(profile, "full_name", ""),
                 "cpf": getattr(profile, "cpf", ""),
                 "phone": getattr(profile, "phone", ""),
+                "pix_key": getattr(profile, "pix_key", ""),
                 "dob": getattr(profile, "dob", None),
                 "zip_code": getattr(profile, "zip_code", ""),
                 "street": getattr(profile, "street", ""),

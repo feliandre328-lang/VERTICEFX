@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   FileText,
   Users,
+  Gift,
   LogOut,
   Settings,
   BarChart3,
@@ -44,6 +45,7 @@ const adminItems: MenuItem[] = [
   { label: "Aprovações Pendentes", icon: Wallet, to: "/app/admin/withdrawals" },
   { label: "Performance Diária", icon: BarChart3, to: "/app/admin/performance" },
   { label: "Clientes", icon: UserCheck, to: "/app/admin/clients" }, // ✅ AQUI
+  { label: "Programa de BenefÃ­cios", icon: Gift, to: "/app/admin/referrals" },
   { label: "Log de Transações", icon: FileText, to: "/app/transactions" },
   { label: "Configurações", icon: Settings, to: "/app/admin/settings" },
 ];

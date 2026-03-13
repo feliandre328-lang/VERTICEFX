@@ -90,45 +90,46 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <StatCard
-          label="Patrimonio Principal"
-          value={<Money>{formatCurrency(state.balanceCapital)}</Money>}
-          subValue="Capital sob gestao"
-          icon={Wallet}
-          color="slate"
-        />
-        <StatCard
-          label="Performance Acumulada"
-          value={<Money>{formatCurrency(state.balanceResults)}</Money>}
-          subValue="Ganhos em destaque"
-          icon={TrendingUp}
-          color="emerald"
-          isAnimated
-        />
-        <StatCard
-          label="Total Aportado"
-          value={formatCurrency(state.totalContributed)}
-          subValue="Historico de entradas"
-          icon={Archive}
-          color="slate"
-        />
-
-        <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-5 flex flex-col justify-center gap-3">
-          <div>
+      <div className="space-y-6">
+        <div className="rounded-lg border border-slate-800 bg-slate-900/30 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="min-w-0">
             <label className="block text-[11px] text-slate-400 mb-1">Valor do aporte (min. R$ 500,00)</label>
-            
             <div className="mt-1 text-[10px] text-slate-500">Use virgula: 500,00</div>
           </div>
 
           <button
             onClick={onOpenPix}
             disabled={loadingPix}
-            className="w-full py-2 px-4 bg-slate-100 hover:bg-white disabled:opacity-60 text-slate-900 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            className="w-full sm:w-auto py-2 px-3 bg-slate-100 hover:bg-white disabled:opacity-60 text-slate-900 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-2"
           >
             <ArrowUpRight size={16} />
             {loadingPix ? "Gerando Pix..." : "Gerar Pix"}
           </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+          <StatCard
+            label="Patrimonio Principal"
+            value={<Money>{formatCurrency(state.balanceCapital)}</Money>}
+            subValue="Capital sob gestao"
+            icon={Wallet}
+            color="slate"
+          />
+          <StatCard
+            label="Performance Acumulada"
+            value={<Money>{formatCurrency(state.balanceResults)}</Money>}
+            subValue="Ganhos em destaque"
+            icon={TrendingUp}
+            color="emerald"
+            isAnimated
+          />
+          <StatCard
+            label="Total Aportado"
+            value={formatCurrency(state.totalContributed)}
+            subValue="Historico de entradas"
+            icon={Archive}
+            color="slate"
+          />
         </div>
       </div>
 

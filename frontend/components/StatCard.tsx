@@ -24,7 +24,11 @@ export default function StatCard({
           <p className="text-[11px] text-slate-400 uppercase tracking-wide font-semibold">{label}</p>
 
           {/* ✅ aqui NÃO pode assumir string */}
-          <div className={`mt-2 text-2xl font-extrabold text-slate-100 ${isAnimated ? "animate-pulse" : ""}`}>
+          <div
+            className={`mt-2 font-extrabold text-slate-100 leading-tight tracking-tight whitespace-nowrap text-[clamp(0.85rem,2.4vw,1.75rem)] ${
+              isAnimated ? "animate-pulse" : ""
+            }`}
+          >
             {value}
           </div>
 

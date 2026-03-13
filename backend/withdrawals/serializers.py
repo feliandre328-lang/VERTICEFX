@@ -121,6 +121,10 @@ class WithdrawalRequestSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop("amount", None)
         request = self.context["request"]
+        if not validated_data.get("pix_key"):
+            profile = getattr(request.user, "account_profile", None)
+            if profile and getattr(profile, "pix_key", ""):
+                validated_data["pix_key"] = profile.pix_key
         return WithdrawalRequest.objects.create(user=request.user, **validated_data)
 
 
