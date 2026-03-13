@@ -209,7 +209,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
 
   const handlePasswordModalConfirm = async (typedPassword: string) => {
     if (!user?.username) {
-      setPasswordModalError("Usuario atual nao identificado. Faca login novamente.");
+      setPasswordModalError("Cliente atual nao identificado. Faca login novamente.");
       return;
     }
     if (!typedPassword) {
@@ -230,7 +230,7 @@ const Withdrawals: React.FC<WithdrawalsProps> = ({ state: _state }) => {
 
   const confirmWithdrawalWithUserPassword = async (): Promise<boolean> => {
     if (!user?.username) {
-      setErrorMsg("Usuario atual nao identificado. Faca login novamente.");
+      setErrorMsg("Cliente atual nao identificado. Faca login novamente.");
       return false;
     }
     setPasswordModalError("");

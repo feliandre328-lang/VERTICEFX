@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   listAdminInvestments,
+  approveInvestment,
+  rejectInvestment,
   approveAdminWithdrawal,
   listAdminWithdrawals,
   payAdminWithdrawal,
@@ -110,6 +112,31 @@ export default function AdminPendingInvestments() {
     try { await payAdminWithdrawal(access, id, { external_ref: externalRef || undefined }); await refresh(); } 
     catch (e: any) { alert(e?.message ?? "Erro ao pagar solicitação"); }
   };
+
+  
+  const onApproveInvestment = async (id: number | string) => {
+    if (!confirm("Aprovar este aporte?")) return;
+
+    try {
+      await approveInvestment(access, id);
+      await refresh();
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao aprovar aporte");
+    }
+  };
+
+  const onRejectInvestment = async (id: number | string) => {
+    if (!confirm("Rejeitar este aporte?")) return;
+
+    try {
+      await rejectInvestment(access, id);
+      await refresh();
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao rejeitar aporte");
+    }
+  };
+
+
 
   // Pesquisa
   const searchedWithdrawals = useMemo(() => {
@@ -225,9 +252,15 @@ export default function AdminPendingInvestments() {
                       {investmentStatusLabel(it.status)}
                     </span>
                   </div>
+
                   <div className="text-xs text-slate-500">
-                    <b className="text-slate-400">Usuario:</b> {username} ({email}) - id {it.user_id || "-"}
+                    <b className="text-slate-400">Cliente:</b> {username}  - id de cliente {it.user_id || "-"}
                   </div>
+
+                  <div className="text-xs text-slate-500">
+                    <b className="text-slate-400">E-mail:</b>{email}
+                  </div>
+
                   <div className="text-xs text-slate-500">
                     <b className="text-slate-400">Aporte:</b> #{it.id}
                   </div>
@@ -239,8 +272,20 @@ export default function AdminPendingInvestments() {
                 <div className="text-xs text-slate-500">
                   {it.status === "PENDING" ? (
                     <div className="flex gap-2">
-                      <button className="px-4 py-2 rounded-lg border border-red-900/50 bg-red-900/20 text-red-300 text-sm hover:bg-red-900/30">Rejeitar</button>
-                      <button className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500">Aprovar</button>
+                      <button
+                        onClick={() => onRejectInvestment(it.id)}
+                        className="px-4 py-2 rounded-lg border border-red-900/50 bg-red-900/20 text-red-300 text-sm hover:bg-red-900/30"
+                      >
+                        Rejeitar
+                      </button>
+
+                      <button
+                        onClick={() => onApproveInvestment(it.id)}
+                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500"
+                      >
+                        Aprovar
+                      </button>
+
                     </div>
                   ) : (
                     "Sem ação"

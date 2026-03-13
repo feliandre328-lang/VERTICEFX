@@ -84,7 +84,7 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
       setInviteEmail("");
       await loadData();
     } catch (err: any) {
-      setErrorMsg(err?.message ?? "Falha ao registrar indicacao.");
+      setErrorMsg(err?.message ?? "Falha ao registrar indicacão.");
     } finally {
       setSubmitting(false);
     }
@@ -123,7 +123,7 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
         <div className="relative z-10">
           <h2 className="text-xl md:text-2xl font-bold text-white mb-2">Programa de Beneficios</h2>
           <p className="text-slate-400 max-w-xl mx-auto text-sm mb-6 leading-relaxed">
-            Convide parceiros para a plataforma e ganhe <strong>Comissao sobre os aportes</strong>. Apenas as 3 primeiras indicacoes geram comissao (5%, 3%, 2%).
+            Convide parceiros para a plataforma e ganhe <strong>Comissão sobre os aportes</strong>. Apenas as 3 primeiras indicacoes geram comissão (5%, 3%, 2%).
           </p>
           <div className="mb-5 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-400">
             <span className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 font-mono">
@@ -149,9 +149,9 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 md:p-6">
-        <h3 className="text-sm font-bold text-white tracking-wide mb-4">Registrar Indicacao</h3>
+        <h3 className="text-sm font-bold text-white tracking-wide mb-4">Registrar Indicacão</h3>
         <p className="text-xs text-slate-500 mb-4">
-          As 3 primeiras indicacoes geram comissao (5%, 3%, 2%). Restantes nao geram comissao.
+          As 3 primeiras indicacoes geram comissão (5%, 3%, 2%). Restantes nao geram comissão.
         </p>
         <form onSubmit={handleCreateInvite} className="grid md:grid-cols-3 gap-3">
           <input
@@ -172,7 +172,7 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
             disabled={submitting || (!inviteName.trim() && !inviteEmail.trim())}
             className="bg-slate-100 hover:bg-white disabled:bg-slate-800 disabled:text-slate-500 text-slate-900 font-semibold rounded px-3 py-2 text-sm"
           >
-            {submitting ? "Enviando..." : "Criar Indicacao"}
+            {submitting ? "Enviando..." : "Criar Indicacão"}
           </button>
         </form>
       </div>
@@ -229,20 +229,20 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 md:p-6 space-y-3">
-        <h3 className="text-sm font-bold text-white tracking-wide">Comissao por Ordem da Indicacao</h3>
+        <h3 className="text-sm font-bold text-white tracking-wide">Comissão por Ordem da Indicacão</h3>
         <div className="grid md:grid-cols-3 gap-3">
           <div className="rounded border border-slate-800 bg-slate-950 p-3">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">1a Indicacao</p>
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">1ª Indicação</p>
             <p className="text-lg font-semibold text-white mt-1">{level1Rate}%</p>
             <p className="text-xs text-slate-500 mt-2">Creditos: {formatCurrency(level1Credits)}</p>
           </div>
           <div className="rounded border border-slate-800 bg-slate-950 p-3">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">2a Indicacao</p>
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">2ª Indicação</p>
             <p className="text-lg font-semibold text-white mt-1">{level2Rate}%</p>
             <p className="text-xs text-slate-500 mt-2">Creditos: {formatCurrency(level2Credits)}</p>
           </div>
           <div className="rounded border border-slate-800 bg-slate-950 p-3">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">3a Indicacao</p>
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">ª Indicação</p>
             <p className="text-lg font-semibold text-white mt-1">{level3Rate}%</p>
             <p className="text-xs text-slate-500 mt-2">Creditos: {formatCurrency(level3Credits)}</p>
           </div>
@@ -261,14 +261,14 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
             <p className="text-lg font-semibold text-white mt-1">{currentTier?.bonus_report ?? "Mensal"}</p>
           </div>
           <div className="rounded border border-slate-800 bg-slate-950 p-3">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">Indicacoes Pendentes</p>
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">Indicações Pendentes</p>
             <p className="text-lg font-semibold text-white mt-1">{pendingReferralsCount}</p>
           </div>
         </div>
         {nextTier ? (
           <p className="text-xs text-slate-400">
             Proximo nivel: <strong>{nextTier.name}</strong> | faltam {formatCurrency(creditsToNext)} e {activeToNext}{" "}
-            indicacoes ativas.
+            indicaçoes ativas.
           </p>
         ) : (
           <p className="text-xs text-emerald-400">Nivel maximo alcancado. Beneficios no maior patamar.</p>
@@ -277,12 +277,12 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
 
       <div className="bg-slate-900 border border-slate-800 rounded-lg">
         <h3 className="px-4 py-3 md:px-6 md:py-4 border-b border-slate-800 text-sm font-bold text-white tracking-wide">
-          Minhas Indicacoes
+          Minhas Indicaçoes
         </h3>
         {loading ? (
           <p className="p-8 text-center text-sm text-slate-600">Carregando...</p>
         ) : sortedReferrals.length === 0 ? (
-          <p className="p-8 text-center text-sm text-slate-600">Nenhuma indicacao registrada.</p>
+          <p className="p-8 text-center text-sm text-slate-600">Nenhuma indicação registrada.</p>
         ) : (
           <div>
             <div className="hidden md:block overflow-x-auto">
@@ -299,7 +299,7 @@ const Referrals: React.FC<ReferralsProps> = ({ user }) => {
                   {sortedReferrals.map((ref) => (
                     <tr key={ref.id} className="hover:bg-slate-800/30 transition-colors">
                       <td className="px-6 py-4 font-medium text-slate-200">
-                        {ref.referred_username || ref.referred_name || ref.referred_email || `Indicacao #${ref.id}`}
+                        {ref.referred_username || ref.referred_name || ref.referred_email || `Indicação #${ref.id}`}
                       </td>
                       <td className="px-6 py-4">{new Date(ref.joined_date).toLocaleDateString("pt-BR")}</td>
                       <td className="px-6 py-4">

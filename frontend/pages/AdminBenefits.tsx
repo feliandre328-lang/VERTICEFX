@@ -157,7 +157,7 @@ export default function AdminBenefits() {
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="rounded border border-slate-800 bg-slate-950/50 px-3 py-2">
-                <p className="text-slate-500">Indicacoes</p>
+                <p className="text-slate-500">Indicações</p>
                 <p className="text-slate-200 font-semibold">{summary.total}</p>
               </div>
               <div className="rounded border border-slate-800 bg-slate-950/50 px-3 py-2">
@@ -169,7 +169,7 @@ export default function AdminBenefits() {
                 <p className="text-amber-400 font-semibold">{summary.pending}</p>
               </div>
               <div className="rounded border border-slate-800 bg-slate-950/50 px-3 py-2">
-                <p className="text-slate-500">Comissao</p>
+                <p className="text-slate-500">Comissão</p>
                 <p className="text-slate-200 font-semibold">{summary.eligible}</p>
               </div>
             </div>
@@ -179,25 +179,31 @@ export default function AdminBenefits() {
               <p className="text-emerald-300 font-semibold">{formatCurrency(summary.creditsCents / 100)}</p>
             </div>
           </div>
-
+          
           <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
             <div className="flex items-center gap-2 text-slate-200">
               <TrendingUp size={16} className="text-emerald-400" />
-              <h3 className="text-sm font-semibold">Comissao por Ordem</h3>
+              <h3 className="text-sm font-semibold">Comissão por Ordem</h3>
             </div>
             <div className="space-y-2 text-xs text-slate-400">
               <div className="flex items-center justify-between">
-                <span>1a indicacao (5%)</span>
+                <span>1ª indicação (5%)</span>
                 <span className="text-slate-200 font-mono">{summary.orderCounts.level1}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span>2a indicacao (3%)</span>
+                <span>2ª indicação (3%)</span>
                 <span className="text-slate-200 font-mono">{summary.orderCounts.level2}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span>3a indicacao (2%)</span>
+                <span>3ª indicação (2%)</span>
                 <span className="text-slate-200 font-mono">{summary.orderCounts.level3}</span>
               </div>
+              <hr></hr>
+              <p className="font-semibold text-slate-200 mb-2">Regras</p>
+              <p>1a indicação: 5% do aporte.</p>
+              <p>2a indicação: 3% do aporte.</p>
+              <p>3a indicação: 2% do aporte.</p>
+              <p>Demais indicacoes: sem comissão.</p>
             </div>
           </div>
 
@@ -224,14 +230,6 @@ export default function AdminBenefits() {
                 ))}
               </div>
             )}
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 text-xs text-slate-400">
-            <p className="font-semibold text-slate-200 mb-2">Regras</p>
-            <p>1a indicacao: 5% do aporte.</p>
-            <p>2a indicacao: 3% do aporte.</p>
-            <p>3a indicacao: 2% do aporte.</p>
-            <p>Demais indicacoes: sem comissao.</p>
           </div>
         </div>
 
@@ -282,9 +280,9 @@ export default function AdminBenefits() {
 
           <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
             {loading ? (
-              <div className="p-8 text-center text-slate-400 text-sm">Carregando indicacoes...</div>
+              <div className="p-8 text-center text-slate-400 text-sm">Carregando indicaçoes...</div>
             ) : sortedItems.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-sm">Nenhuma indicacao encontrada.</div>
+              <div className="p-8 text-center text-slate-500 text-sm">Nenhuma indicação encontrada.</div>
             ) : (
               <>
                 <div className="hidden lg:block overflow-x-auto">
@@ -295,7 +293,7 @@ export default function AdminBenefits() {
                         <th className="px-6 py-4">Indicado</th>
                         <th className="px-6 py-4">Status</th>
                         <th className="px-6 py-4">Ordem</th>
-                        <th className="px-6 py-4">Comissao</th>
+                        <th className="px-6 py-4">Comissão</th>
                         <th className="px-6 py-4 text-right">Creditos</th>
                         <th className="px-6 py-4 text-right">Cadastro</th>
                       </tr>
@@ -376,7 +374,7 @@ export default function AdminBenefits() {
                             {item.status === "ACTIVE" ? "Ativo" : "Pendente"}
                           </span>
                           <span className="text-xs text-slate-300">
-                            Ordem {item.referral_level} â€¢ {item.commission_eligible ? `${percent}%` : "sem comissao"}
+                            Ordem {item.referral_level} â€¢ {item.commission_eligible ? `${percent}%` : "sem comissão"}
                           </span>
                         </div>
                         <div className="mt-3 text-xs text-emerald-300 font-mono">

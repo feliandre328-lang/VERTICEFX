@@ -520,7 +520,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     <div className="space-y-4">
       <h3 className="text-lg font-bold text-white flex items-center gap-2">
         <AlertCircle size={20} className="text-amber-500" />
-        {view === "admin-withdrawals" ? "Resgates e Liquidações Pendentes" : "Investments (todas)"}
+        {view === "admin-withdrawals" ? "Resgates e Liquidações Pendentes" : "Útimo Aportes (todos)"}
       </h3>
 
       {errMsg ? (
@@ -631,7 +631,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <p className="text-[11px] text-slate-500 uppercase tracking-wider">Carteira Consolidada</p>
               <p className="text-2xl font-bold text-white mt-1">{formatCurrency(consolidatedWallet)}</p>
               <p className="text-xs text-slate-400 mt-1">
-                TVL em gestao + saldo de todos os clientes (distribuicoes/ledger).
+                TVL em gestão + saldo de todos os clientes (distribuições/resgate de aporte e comissões do programa de indicação).
               </p>
 
               <div className="mt-4 space-y-3">
@@ -673,7 +673,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <p className="text-[11px] text-slate-500 mt-2">
-                Base saldo clientes: Distribuiçao de Performance não liquidadas {formatCurrency(distributionsUnpaid)} +
+                Base saldo clientes: Distribuição de Performance não liquidadas {formatCurrency(distributionsUnpaid)} +
                 Resgaste de Aporte não liquidados {formatCurrency(ledgerManualUnpaid)} - Saques Semanal{" "}
                 {formatCurrency(resultWithdrawals)}.
               </p>
