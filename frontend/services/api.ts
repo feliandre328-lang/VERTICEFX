@@ -1,47 +1,1205 @@
-const API_BASE = "";
+// api.ts (completo)
+// - Produção: VITE_API_BASE=/api  (via Nginx proxy)
+// - Dev local: VITE_API_BASE=http://127.0.0.1:8000/api
+// Observação: com API_BASE = "/api", NÃO use "/api" de novo nos endpoints.
 
-export async function login(username: string, password: string) {
-  const res = await fetch(`${API_BASE}/api/auth/token/`, {
+export const API_BASE: string = import.meta.env.VITE_API_BASE ?? "/api";
+
+// -------------------- HELPERS -------------------- //
+
+type ApiError = { detail?: string; message?: string; [k: string]: any };
+
+async function readBodyOnce(res: Response): Promise<{ raw: string; json: any | null }> {
+  if (res.status === 401) {
+    try {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("vfx:auth:unauthorized"));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const raw = await res.text(); // ✅ lê 1 vez apenas
+  try {
+    return { raw, json: raw ? JSON.parse(raw) : null };
+  } catch {
+    return { raw, json: null };
+  }
+}
+
+function formatError(status: number, raw: string, json: ApiError | null) {
+  const msg =
+    (json && (json.detail || json.message)) ||
+    (json ? JSON.stringify(json) : "") ||
+    raw ||
+    `Erro ${status}`;
+  return msg;
+}
+
+function authHeaders(access: string) {
+  if (!access) throw new Error("Token ausente. Faça login novamente.");
+  return { Authorization: `Bearer ${access}` };
+}
+
+function withQuery(path: string, params?: Record<string, string | number | boolean | null | undefined>) {
+  if (!params) return path;
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "");
+  if (!entries.length) return path;
+
+  const qs = new URLSearchParams();
+  for (const [k, v] of entries) qs.set(k, String(v));
+
+  return `${path}${path.includes("?") ? "&" : "?"}${qs.toString()}`;
+}
+
+function asList<T>(json: any): T[] {
+  if (Array.isArray(json)) return json as T[];
+  if (json && Array.isArray(json.results)) return json.results as T[];
+  return [];
+}
+
+// -------------------- AUTH -------------------- //
+
+export type TokenPair = { access: string; refresh: string };
+
+export async function login(username: string, password: string): Promise<TokenPair> {
+  const res = await fetch(`${API_BASE}/auth/token/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
   });
 
+  const { raw, json } = await readBodyOnce(res);
+
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Falha no login: ${res.status} ${text}`);
+    throw new Error(`Falha no login: ${res.status} ${formatError(res.status, raw, json)}`);
   }
 
-  return res.json() as Promise<{ access: string; refresh: string }>;
+  if (!json?.access || !json?.refresh) {
+    throw new Error("Falha no login: resposta inválida do servidor.");
+  }
+
+  return json as TokenPair;
 }
 
-export async function listAssets(access: string) {
-  const res = await fetch(`${API_BASE}/api/assets/`, {
-    headers: { Authorization: `Bearer ${access}` },
+export async function verifyCurrentUserPassword(username: string, password: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/token/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
   });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Falha ao listar assets: ${res.status} ${text}`);
+  if (res.ok) return;
+
+  const raw = await res.text();
+  let detail = raw;
+  try {
+    const json = raw ? JSON.parse(raw) : null;
+    detail = (json && (json.detail || json.message)) || raw;
+  } catch {
+    detail = raw;
   }
 
-  return res.json();
+  if (res.status === 400 || res.status === 401) {
+    throw new Error("Senha invalida.");
+  }
+
+  throw new Error(`Falha ao validar senha: ${res.status} ${detail || "erro desconhecido"}`);
 }
 
-export async function createAsset(access: string, data: { symbol: string; name?: string }) {
-  const res = await fetch(`${API_BASE}/api/assets/`, {
+export type Me = {
+  id: number;
+  username: string;
+  email: string;
+  is_staff: boolean;
+  is_superuser: boolean;
+  is_active?: boolean;
+  date_joined?: string;
+  profile?: {
+    full_name?: string;
+    cpf?: string;
+    phone?: string;
+    pix_key?: string;
+    dob?: string | null;
+    zip_code?: string;
+    street?: string;
+    number?: string;
+    complement?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+  } | null;
+};
+
+export async function fetchMe(accessToken: string): Promise<Me> {
+  const res = await fetch(`${API_BASE}/auth/me/`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar usuário: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as Me;
+}
+
+export type MarketTickerQuote = {
+  type: "quote";
+  market: "equity" | "fx" | string;
+  symbol: string;
+  price: number;
+  change_pct: number | null;
+  currency?: string;
+};
+
+export type MarketTickerNews = {
+  type: "news";
+  title: string;
+  url: string;
+  source?: string;
+};
+
+export type MarketTickerResponse = {
+  updated_at: string;
+  quotes: MarketTickerQuote[];
+  news: MarketTickerNews[];
+};
+
+export async function getMarketTicker(): Promise<MarketTickerResponse> {
+  const res = await fetch(`${API_BASE}/market/ticker/`);
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar ticker de mercado: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  const quotes = Array.isArray(json?.quotes)
+    ? json.quotes.map((q: any) => ({
+      ...q,
+      price: Number(q?.price ?? 0),
+      change_pct: q?.change_pct === null || q?.change_pct === undefined ? null : Number(q.change_pct),
+      currency: typeof q?.currency === "string" ? q.currency : undefined,
+    }))
+    : [];
+
+  const news = Array.isArray(json?.news) ? json.news : [];
+
+  return {
+    updated_at: typeof json?.updated_at === "string" ? json.updated_at : "",
+    quotes,
+    news,
+  };
+}
+
+export type PasswordResetRequestResponse = {
+  detail: string;
+  delivery?: "email" | "manual" | string;
+  reset_url?: string;
+};
+
+export async function requestPasswordReset(identifier: string): Promise<PasswordResetRequestResponse> {
+  const res = await fetch(`${API_BASE}/auth/password-reset/request/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identifier }),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao solicitar redefinição: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return (json ?? {}) as PasswordResetRequestResponse;
+}
+
+export async function confirmPasswordReset(data: {
+  uid: string;
+  token: string;
+  new_password: string;
+  new_password2: string;
+}): Promise<{ detail: string }> {
+  const res = await fetch(`${API_BASE}/auth/password-reset/confirm/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao redefinir senha: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return (json ?? {}) as { detail: string };
+}
+
+// -------------------- DASHBOARD SUMMARY -------------------- //
+
+export type DashboardSummary = {
+  balance_capital_cents: number;
+  pending_cents: number;
+  approved_count: number;
+  pending_count: number;
+};
+
+export async function getDashboardSummary(access: string): Promise<DashboardSummary> {
+  const res = await fetch(`${API_BASE}/dashboard/summary/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar resumo: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as DashboardSummary;
+}
+
+// -------------------- PIX -------------------- //
+
+export type PixChargeResponse = {
+  pix_code: string;
+  external_ref: string;
+  qr_code_base64?: string;
+};
+
+export async function createPixCharge(access: string, amount: number): Promise<PixChargeResponse> {
+  const res = await fetch(`${API_BASE}/pix/charge/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${access}`,
+      ...authHeaders(access),
+    },
+    body: JSON.stringify({ amount }),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao gerar Pix: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as PixChargeResponse;
+}
+
+// -------------------- INVESTMENT -------------------- //
+
+export type InvestmentItem = {
+  id: number | string;
+  amount_cents: number;
+  amount?: number; // se o serializer mandar
+  status: "PENDING" | "APPROVED" | "REJECTED" | string;
+  paid_at: string | null;
+  external_ref: string | null;
+  created_at: string;
+};
+
+export async function createInvestment(
+  access: string,
+  data: { amount: number; external_ref?: string; paid_at?: string }
+) {
+  const res = await fetch(`${API_BASE}/investments/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
     },
     body: JSON.stringify(data),
   });
 
+  const { raw, json } = await readBodyOnce(res);
+
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Falha ao criar asset: ${res.status} ${text}`);
+    throw new Error(`Falha ao registrar aporte: ${res.status} ${formatError(res.status, raw, json)}`);
   }
 
-  return res.json();
+  return json;
+}
+
+export async function listInvestments(access: string): Promise<InvestmentItem[]> {
+  const res = await fetch(`${API_BASE}/investments/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao listar aportes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  const normalize = (item: any): InvestmentItem => ({
+    ...item,
+    amount_cents: Number(item?.amount_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(`Falha ao listar aportes: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`);
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
+// -------------------- SUMMARY -------------------- //
+
+export async function getMeSummary(access: string) {
+  const res = await fetch(`${API_BASE}/me/summary/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar resumo: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as Promise<{
+    total_invested: number;
+    count_investments: number;
+  }>;
+}
+
+// -------------------- WITHDRAWALS -------------------- //
+
+export type WithdrawalSummary = {
+  available_capital_cents: number;
+  available_result_cents: number;
+  investments_total_cents: number;
+  approved_capital_cents: number;
+  liquid_capital_cents: number;
+  capital_reserved_cents: number;
+  capital_reserved_total_cents: number;
+  daily_distribution_total_cents: number;
+  result_ledger_cents: number;
+  result_reserved_cents: number;
+  result_reserved_total_cents: number;
+  withdrawals_total_cents: number;
+  statement_net_cents: number;
+  pending_capital_cents: number;
+  pending_result_cents: number;
+  capital_cutoff_date: string;
+};
+
+export type WithdrawalType = "RESULT_SETTLEMENT" | "CAPITAL_REDEMPTION";
+
+export type WithdrawalItem = {
+  id: number;
+  withdrawal_type: WithdrawalType;
+  amount_cents: number;
+  pix_key: string;
+  scheduled_for: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "PAID" | string;
+  rejection_reason: string;
+  admin_note: string;
+  external_ref: string | null;
+  requested_at: string;
+  approved_at: string | null;
+  paid_at: string | null;
+};
+
+export async function getWithdrawalSummary(access: string, scheduledFor?: string): Promise<WithdrawalSummary> {
+  const url = withQuery(`${API_BASE}/withdrawals/summary/`, { scheduled_for: scheduledFor });
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar saldo de resgates: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as WithdrawalSummary;
+}
+
+export async function listWithdrawals(access: string): Promise<WithdrawalItem[]> {
+  const res = await fetch(`${API_BASE}/withdrawals/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar resgates: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  const normalize = (item: any): WithdrawalItem => ({
+    ...item,
+    amount_cents: Number(item?.amount_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(`Falha ao listar resgates: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`);
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
+export async function createWithdrawal(
+  access: string,
+  data: {
+    withdrawal_type: WithdrawalType;
+    amount: number;
+    pix_key?: string;
+    scheduled_for?: string;
+  }
+): Promise<WithdrawalItem> {
+  const res = await fetch(`${API_BASE}/withdrawals/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify(data),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao criar resgate: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as WithdrawalItem;
+}
+
+export type DailyPerformanceDistribution = {
+  id: number;
+  user: number;
+  username: string;
+  reference_date: string;
+  performance_percent: string;
+  base_capital_cents: number;
+  result_cents: number;
+  note: string;
+  created_at: string;
+  created_by: number | null;
+  created_by_username: string;
+};
+
+export async function createDailyPerformanceDistribution(
+  access: string,
+  data: { reference_date?: string; performance_percent: number; user_id?: number; note?: string }
+): Promise<DailyPerformanceDistribution[]> {
+  const res = await fetch(`${API_BASE}/admin/performance-distributions/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify(data),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao distribuir performance: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return (json ?? []) as DailyPerformanceDistribution[];
+}
+
+export async function listDailyPerformanceDistributions(access: string): Promise<DailyPerformanceDistribution[]> {
+  const res = await fetch(`${API_BASE}/performance-distributions/`, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(
+      `Falha ao listar distribuicoes de performance: ${res.status} ${formatError(res.status, raw, json)}`
+    );
+  }
+  const normalize = (item: any): DailyPerformanceDistribution => ({
+    ...item,
+    result_cents: Number(item?.result_cents ?? 0),
+    base_capital_cents: Number(item?.base_capital_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(
+        `Falha ao listar distribuicoes de performance: ${pageRes.status} ${formatError(
+          pageRes.status,
+          pageRaw,
+          pageJson
+        )}`
+      );
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
+export async function listAdminPerformanceDistributions(
+  access: string,
+  params?: { reference_date?: string; user_id?: number | string }
+): Promise<DailyPerformanceDistribution[]> {
+  const url = withQuery(`${API_BASE}/admin/performance-distributions/`, params);
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(
+      `Falha ao listar distribuicoes admin: ${res.status} ${formatError(res.status, raw, json)}`
+    );
+  }
+  const normalize = (item: any): DailyPerformanceDistribution => ({
+    ...item,
+    result_cents: Number(item?.result_cents ?? 0),
+    base_capital_cents: Number(item?.base_capital_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(
+        `Falha ao listar distribuicoes admin: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`
+      );
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
+// -------------------- REFERRALS -------------------- //
+
+export type ReferralTier = {
+  name: string;
+  min_credits_cents: number;
+  min_active: number;
+  fee_discount: string;
+  bonus_report: string;
+};
+
+export type ReferralSummary = {
+  referral_code: string;
+  active_referrals_count: number;
+  pending_referrals_count: number;
+  total_credits_cents: number;
+  level_1_credits_cents: number;
+  level_2_credits_cents: number;
+  level_3_credits_cents: number;
+  commission_invites_limit: number;
+  commission_invites_used: number;
+  commission_invites_remaining: number;
+  commission_rates: {
+    level_1_percent: number;
+    level_2_percent: number;
+    level_3_percent: number;
+  };
+  current_tier: ReferralTier;
+  next_tier: ReferralTier | null;
+  credits_to_next_cents: number;
+  active_to_next: number;
+};
+
+export type ReferralInvite = {
+  id: number;
+  referrer?: number | null;
+  referrer_username?: string;
+  referrer_email?: string;
+  referred_user: number | null;
+  referred_username: string;
+  referred_name: string;
+  referred_email: string;
+  status: "PENDING" | "ACTIVE" | string;
+  credits_cents: number;
+  commission_eligible: boolean;
+  referral_level: number;
+  referral_code_used: string;
+  joined_date: string;
+  activated_at: string | null;
+};
+
+export type ReferralCodeResolve = {
+  code: string;
+  referrer: {
+    id: number;
+    username: string;
+    full_name: string;
+  };
+  commission_invites_limit: number;
+  commission_invites_used: number;
+  commission_invites_remaining: number;
+  commission_rates: {
+    level_1_percent: number;
+    level_2_percent: number;
+    level_3_percent: number;
+  };
+};
+
+export async function getReferralSummary(access: string): Promise<ReferralSummary> {
+  const res = await fetch(`${API_BASE}/referrals/summary/`, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar resumo de indicacoes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as ReferralSummary;
+}
+
+export async function listReferralInvites(access: string): Promise<ReferralInvite[]> {
+  const res = await fetch(`${API_BASE}/referrals/invites/`, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar indicacoes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return (json ?? []) as ReferralInvite[];
+}
+
+export async function createReferralInvite(
+  access: string,
+  data: { referred_name?: string; referred_email?: string }
+): Promise<ReferralInvite> {
+  const res = await fetch(`${API_BASE}/referrals/invites/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify(data),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao criar indicacao: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as ReferralInvite;
+}
+
+export type AdminReferralInvite = ReferralInvite;
+
+export async function listAdminReferralInvites(
+  access: string,
+  params?: { status?: string; referrer_id?: number | string }
+): Promise<AdminReferralInvite[]> {
+  const url = withQuery(`${API_BASE}/admin/referrals/invites/`, params);
+
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar indicacoes (admin): ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  const items = asList<AdminReferralInvite>(json);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(
+        `Falha ao listar indicacoes (admin): ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`
+      );
+    }
+    items.push(...asList<AdminReferralInvite>(pageJson));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
+export async function resolveReferralCode(code: string): Promise<ReferralCodeResolve> {
+  const normalized = String(code || "").trim();
+  const res = await fetch(`${API_BASE}/referrals/resolve/${encodeURIComponent(normalized)}/`);
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao validar convite: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as ReferralCodeResolve;
+}
+
+// -------------------- ADMIN -------------------- //
+
+export type AdminInvestmentItem = {
+  id: number;
+  amount_cents: number;
+  status: "PENDING" | "APPROVED" | "REJECTED" | string;
+  paid_at: string | null;
+  external_ref: string | null;
+  created_at: string;
+
+  // do serializer admin (select_related user)
+  user_id?: number;
+  user_username?: string;
+  user_email?: string;
+  username?: string;
+  email?: string;
+};
+
+export async function listAdminInvestments(
+  access: string,
+  status?: string
+): Promise<AdminInvestmentItem[]> {
+  const url = withQuery(`${API_BASE}/admin/investments/`, { status });
+
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao listar admin investments: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  const normalize = (item: any): AdminInvestmentItem => ({
+    ...item,
+    amount_cents: Number(item?.amount_cents ?? 0),
+  });
+
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(
+        `Falha ao listar admin investments: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`
+      );
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
+export async function approveInvestment(access: string, id: number | string) {
+  const res = await fetch(`${API_BASE}/admin/investments/${id}/approve/`, {
+    method: "POST",
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao aprovar: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json;
+}
+
+export async function rejectInvestment(access: string, id: number | string) {
+  const res = await fetch(`${API_BASE}/admin/investments/${id}/reject/`, {
+    method: "POST",
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao rejeitar: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json;
+}
+
+export type AdminSummary = {
+  tvl_cents: number;
+  withdrawals_cents?: number;
+  capital_withdrawals_cents?: number;
+  pending_cents: number;
+  approved_count: number;
+  pending_count: number;
+  daily_distribution_total_cents?: number;
+  result_ledger_total_cents?: number;
+  result_ledger_from_distribution_cents?: number;
+  result_ledger_manual_total_cents?: number;
+  result_settlement_withdrawals_cents?: number;
+  clients_result_balance_cents?: number;
+};
+
+export async function getAdminSummary(access: string): Promise<AdminSummary> {
+  const res = await fetch(`${API_BASE}/admin/summary/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar admin summary: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as AdminSummary;
+}
+
+// -------------------- NOTIFICATIONS -------------------- //
+
+export type NotificationItem = {
+  id: number;
+  category: "SYSTEM" | "INVESTMENT" | "WITHDRAWAL" | "PERFORMANCE" | string;
+  title: string;
+  message: string;
+  payload: Record<string, any>;
+  is_read: boolean;
+  created_at: string;
+};
+
+export async function listNotifications(
+  access: string,
+  params?: { unread_only?: boolean; limit?: number }
+): Promise<NotificationItem[]> {
+  const url = withQuery(`${API_BASE}/notifications/`, {
+    unread_only: params?.unread_only ? 1 : undefined,
+    limit: params?.limit,
+  });
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar notificacoes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return (json ?? []) as NotificationItem[];
+}
+
+export async function getNotificationsUnreadCount(access: string): Promise<number> {
+  const res = await fetch(`${API_BASE}/notifications/unread-count/`, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao carregar contador de notificacoes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return Number(json?.unread_count || 0);
+}
+
+export async function markNotificationRead(access: string, id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/notifications/${id}/mark-read/`, {
+    method: "POST",
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao marcar notificacao: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+}
+
+export async function markAllNotificationsRead(access: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/notifications/mark-all-read/`, {
+    method: "POST",
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao marcar todas notificacoes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+}
+
+export type AdminWithdrawalItem = {
+  id: number;
+  user: number;
+  username: string;
+  email: string;
+  withdrawal_type: "RESULT_SETTLEMENT" | "CAPITAL_REDEMPTION" | string;
+  amount_cents: number;
+  pix_key: string;
+  scheduled_for: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "PAID" | string;
+  rejection_reason: string;
+  admin_note: string;
+  external_ref: string | null;
+  requested_at: string;
+  approved_at: string | null;
+  paid_at: string | null;
+};
+
+export async function listAdminWithdrawals(
+  access: string,
+  status?: string,
+  withdrawalType?: "RESULT_SETTLEMENT" | "CAPITAL_REDEMPTION" | string
+): Promise<AdminWithdrawalItem[]> {
+  const url = withQuery(`${API_BASE}/admin/withdrawals/`, { status, withdrawal_type: withdrawalType });
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar resgates admin: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  const normalize = (item: any): AdminWithdrawalItem => ({
+    ...item,
+    amount_cents: Number(item?.amount_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(`Falha ao listar resgates admin: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`);
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
+export type AdminResultLedgerEntry = {
+  id: number;
+  user: number;
+  username: string;
+  amount_cents: number;
+  description: string;
+  external_ref: string | null;
+  created_at: string;
+  created_by: number | null;
+  created_by_username: string;
+};
+
+export async function listAdminResultLedger(
+  access: string,
+  params?: { user_id?: number | string }
+): Promise<AdminResultLedgerEntry[]> {
+  const url = withQuery(`${API_BASE}/admin/result-ledger/`, params);
+  const res = await fetch(url, {
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar ledger admin: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  const normalize = (item: any): AdminResultLedgerEntry => ({
+    ...item,
+    amount_cents: Number(item?.amount_cents ?? 0),
+  });
+  const items = asList<any>(json).map(normalize);
+  const visited = new Set<string>();
+  let next = typeof json?.next === "string" ? json.next : null;
+
+  while (next && !visited.has(next)) {
+    visited.add(next);
+    const pageRes = await fetch(next, { headers: authHeaders(access) });
+    const { raw: pageRaw, json: pageJson } = await readBodyOnce(pageRes);
+    if (!pageRes.ok) {
+      throw new Error(`Falha ao listar ledger admin: ${pageRes.status} ${formatError(pageRes.status, pageRaw, pageJson)}`);
+    }
+    items.push(...asList<any>(pageJson).map(normalize));
+    next = typeof pageJson?.next === "string" ? pageJson.next : null;
+  }
+
+  return items;
+}
+
+export async function approveAdminWithdrawal(access: string, id: number | string): Promise<AdminWithdrawalItem> {
+  const res = await fetch(`${API_BASE}/admin/withdrawals/${id}/approve/`, {
+    method: "POST",
+    headers: authHeaders(access),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao aprovar resgate: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as AdminWithdrawalItem;
+}
+
+export async function rejectAdminWithdrawal(
+  access: string,
+  id: number | string,
+  rejection_reason: string,
+  admin_note?: string
+): Promise<AdminWithdrawalItem> {
+  const res = await fetch(`${API_BASE}/admin/withdrawals/${id}/reject/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify({ rejection_reason, admin_note }),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao rejeitar resgate: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as AdminWithdrawalItem;
+}
+
+export async function payAdminWithdrawal(
+  access: string,
+  id: number | string,
+  data?: { external_ref?: string; admin_note?: string }
+): Promise<AdminWithdrawalItem> {
+  const res = await fetch(`${API_BASE}/admin/withdrawals/${id}/pay/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(access),
+    },
+    body: JSON.stringify(data ?? {}),
+  });
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao pagar resgate: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as AdminWithdrawalItem;
+}
+
+// ------ Sing UP ----- //
+export type SignupPayload = {
+  username: string;
+  email?: string;
+  password: string;
+  password2: string;
+  full_name: string;
+  cpf: string;
+  phone?: string;
+  pix_key?: string;
+  dob?: string;
+  zip_code?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  referral_code?: string;
+};
+
+export type SignupResponse = {
+  user: { id: number; username: string; email: string };
+  profile: { full_name: string; cpf: string; phone: string; pix_key?: string };
+  access: string;
+  refresh: string;
+};
+
+export async function signup(payload: SignupPayload): Promise<SignupResponse> {
+  const res = await fetch(`${API_BASE}/auth/signup/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+
+  if (!res.ok) {
+    throw new Error(`Falha no cadastro: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return json as SignupResponse;
+}
+
+export type AdminClient = {
+  user_id: number;
+  username: string;
+  email: string;
+  date_joined: string;
+
+  full_name: string;
+  cpf: string;
+  phone: string;
+  dob: string | null;
+
+  zip_code: string;
+  street: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+
+  created_at: string;
+};
+
+export async function listAdminClients(access: string): Promise<AdminClient[]> {
+  const res = await fetch(`${API_BASE}/admin/clients/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao listar clientes: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+
+  return (json ?? []) as AdminClient[];
+}
+
+export type AdminClientStatement = {
+  totals: {
+    invested_cents: number;
+    withdrawn_cents: number;
+    balance_cents: number;
+    total_gained_cents?: number;
+  };
+  investments: Array<{
+    id: number;
+    amount_cents: number;
+    status: string;
+    created_at: string;
+    external_ref: string | null;
+  }>;
+  withdrawals: Array<{
+    id: number;
+    amount_cents: number;
+    status: string;
+    created_at: string;
+    external_ref: string | null;
+  }>;
+};
+
+export async function getAdminClient(access: string, id: number): Promise<AdminClient> {
+  const res = await fetch(`${API_BASE}/admin/clients/${id}/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar cliente: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as AdminClient;
+}
+
+export async function getAdminClientStatement(access: string, id: number): Promise<AdminClientStatement> {
+  const res = await fetch(`${API_BASE}/admin/clients/${id}/statement/`, {
+    headers: authHeaders(access),
+  });
+
+  const { raw, json } = await readBodyOnce(res);
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar extrato: ${res.status} ${formatError(res.status, raw, json)}`);
+  }
+  return json as AdminClientStatement;
 }

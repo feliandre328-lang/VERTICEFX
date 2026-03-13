@@ -1,21 +1,26 @@
 from django.conf import settings
 from django.db import models
 
-class Asset(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="assets")
-    symbol = models.CharField(max_length=20)
-    name = models.CharField(max_length=120, blank=True)
+
+class Investment(models.Model):
+    STATUS_PENDING = "PENDING"
+    STATUS_APPROVED = "APPROVED"
+    STATUS_REJECTED = "REJECTED"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pendente"),
+        (STATUS_APPROVED, "Aprovado"),
+        (STATUS_REJECTED, "Rejeitado"),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="investments")
+    amount_cents = models.PositiveIntegerField()
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default=STATUS_PENDING)
+
+    paid_at = models.DateTimeField(null=True, blank=True)
+    external_ref = models.CharField(max_length=80, null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        unique_together = ("user", "symbol")
-
-class Transaction(models.Model):
-    KIND = (("BUY", "Buy"), ("SELL", "Sell"))
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="transactions")
-    asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name="transactions")
-    kind = models.CharField(max_length=4, choices=KIND)
-    quantity = models.DecimalField(max_digits=18, decimal_places=6)
-    price = models.DecimalField(max_digits=18, decimal_places=6)
-    date = models.DateField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    def __str__(self):
+        return f"Investment({self.user_id}) {self.amount_cents} {self.status}"

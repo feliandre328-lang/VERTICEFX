@@ -1,0 +1,87 @@
+name: Deploy Frontend to Host (SSH)
+
+on:
+  push:
+    branches: ["dev"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "frontend-deploy-host"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      REPO_SSH_URL: ${{ secrets.REPO_SSH_URL }}
+      DEPLOY_HOST: ${{ secrets.SSH_HOST}}
+      DEPLOY_USER: ${{'ubuntu'}}
+      DEPLOY_PORT: ${{ 22 }}
+      DEPLOY_PATH: ${{'/var/www/verticefx' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+          VITE_PIX_KEY: ${{ secrets.VITE_PIX_KEY }}
+          VITE_PIX_MERCHANT_NAME: ${{ secrets.VITE_PIX_MERCHANT_NAME }}
+          VITE_PIX_MERCHANT_CITY: ${{ secrets.VITE_PIX_MERCHANT_CITY }}
+        run: npm run build
+
+      - name: Resolve deploy target
+        run: |
+          RESOLVED_HOST="${DEPLOY_HOST}"
+          RESOLVED_USER="${DEPLOY_USER}"
+
+          # fallback parse from REPO_SSH_URL (ex: git@host:repo.git)
+          if [ -z "${RESOLVED_HOST}" ] && [ -n "${REPO_SSH_URL}" ]; then
+            RESOLVED_HOST="$(echo "${REPO_SSH_URL}" | sed -E 's#^[^@]+@([^:/]+).*#\1#')"
+          fi
+          if [ -z "${RESOLVED_USER}" ] && [ -n "${REPO_SSH_URL}" ]; then
+            RESOLVED_USER="$(echo "${REPO_SSH_URL}" | sed -E 's#^([^@]+)@.*#\1#')"
+          fi
+
+          if [ -z "${RESOLVED_HOST}" ]; then echo "Missing SSH_HOST (or REPO_SSH_URL parseable host)"; exit 1; fi
+          if [ -z "${RESOLVED_USER}" ]; then echo "Missing SSH_USER/DEPLOY_USER (or REPO_SSH_URL parseable user)"; exit 1; fi
+
+          echo "RESOLVED_DEPLOY_HOST=${RESOLVED_HOST}" >> "$GITHUB_ENV"
+          echo "RESOLVED_DEPLOY_USER=${RESOLVED_USER}" >> "$GITHUB_ENV"
+
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${DEPLOY_PORT}" -H "${RESOLVED_DEPLOY_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Upload dist to host
+        run: |
+          rsync -az --delete \
+            -e "ssh -p ${DEPLOY_PORT}" \
+            dist/ "${RESOLVED_DEPLOY_USER}@${RESOLVED_DEPLOY_HOST}:${DEPLOY_PATH}/"
+
+      - name: Optional post deploy command
+        if: ${{ secrets.DEPLOY_POST_CMD != '' }}
+        run: |
+          ssh -p "${DEPLOY_PORT}" "${RESOLVED_DEPLOY_USER}@${RESOLVED_DEPLOY_HOST}" "${{ secrets.DEPLOY_POST_CMD }}"

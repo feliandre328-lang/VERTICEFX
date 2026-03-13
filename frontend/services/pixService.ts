@@ -34,12 +34,16 @@ const crc16 = (data: string): string => {
  * @returns A string representing the "PIX Copia e Cola" code.
  */
 export const generatePIXCode = (amount: number, txid: string): string => {
-  // --- Static data for the demo ---
-  const pixKey = '11478738448';
-  const merchantName = 'FELIPE RODRIGO SILVA';
-  const merchantCity = 'CAMARAGIBE';
+  const env = import.meta.env;
 
-  // ---
+  const pixKey = (env.VITE_PIX_KEY || "").toString().trim();
+  const merchantName = (env.VITE_PIX_MERCHANT_NAME || "VERTICE FX").toString().trim().toUpperCase().slice(0, 25);
+  const merchantCity = (env.VITE_PIX_MERCHANT_CITY || "SAO PAULO").toString().trim().toUpperCase().slice(0, 15);
+  const normalizedTxid = (txid || "VFXTXID").toString().trim().toUpperCase().slice(0, 25);
+
+  if (!pixKey) {
+    throw new Error("Configure VITE_PIX_KEY no .env para gerar o Pix.");
+  }
 
   const payload = [
     formatValue('00', '01'), // Payload Format Indicator
@@ -54,7 +58,7 @@ export const generatePIXCode = (amount: number, txid: string): string => {
     formatValue('59', merchantName),
     formatValue('60', merchantCity),
     formatValue('62', // Additional Data Field
-      formatValue('05', txid)
+      formatValue('05', normalizedTxid)
     )
   ].join('');
 

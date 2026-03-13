@@ -1,45 +1,144 @@
-import React from 'react';
-import { UserProfile, SystemState } from '../types';
-import { Copy, Users, Gift, Ticket, CheckCircle, Clock } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from "react";
+import { UserProfile, SystemState } from "../types";
+import { Copy, Users, Gift, Ticket, CheckCircle, Clock, TrendingUp, TrendingDown } from "lucide-react";
+import { useAuth } from "../layouts/AuthContext";
+import {
+  createReferralInvite,
+  getReferralSummary,
+  getWithdrawalSummary,
+  listReferralInvites,
+  type ReferralInvite,
+  type ReferralSummary,
+  type WithdrawalSummary,
+} from "../services/api";
 
 interface ReferralsProps {
   user: UserProfile;
   state: SystemState;
 }
 
-const Referrals: React.FC<ReferralsProps> = ({ user, state }) => {
-  const referralLink = `https://vertice.fx/invite/${user.referralCode}`;
+const Referrals: React.FC<ReferralsProps> = ({ user }) => {
+  const { getAccessToken } = useAuth();
+  const access = useMemo(() => getAccessToken(), [getAccessToken]);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(referralLink);
-    alert('Link de convite copiado!');
+  const [summary, setSummary] = useState<ReferralSummary | null>(null);
+  const [withdrawalSummary, setWithdrawalSummary] = useState<WithdrawalSummary | null>(null);
+  const [invites, setInvites] = useState<ReferralInvite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const referralCode = useMemo(() => (summary?.referral_code || "").trim(), [summary?.referral_code]);
+  const referralLink = useMemo(() => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://verticefx.com.br";
+    return referralCode ? `${origin}/invite/${referralCode}` : `${origin}/signup`;
+  }, [referralCode]);
+
+  const loadData = async () => {
+    if (!access) return;
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const [summaryData, invitesData, withdrawalData] = await Promise.all([
+        getReferralSummary(access),
+        listReferralInvites(access),
+        getWithdrawalSummary(access),
+      ]);
+      setSummary(summaryData);
+      setInvites(invitesData);
+      setWithdrawalSummary(withdrawalData);
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? "Falha ao carregar indicacoes.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const formatCurrency = (val: number) => 
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access]);
 
-  const activeReferralsCount = state.referrals.filter(r => r.status === 'ACTIVE').length;
-  const totalEarnings = state.referrals.reduce((sum, r) => sum + r.earnings, 0);
-  
-  const sortedReferrals = [...state.referrals].sort((a, b) => new Date(b.joinedDate).getTime() - new Date(a.joinedDate).getTime());
+  const handleCopy = () => {
+    if (!referralCode) {
+      setErrorMsg("Codigo de convite indisponivel.");
+      return;
+    }
+    navigator.clipboard.writeText(referralLink);
+    alert("Link de convite copiado!");
+  };
+
+  const handleCreateInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!access || (!inviteName.trim() && !inviteEmail.trim())) return;
+    try {
+      setSubmitting(true);
+      setErrorMsg("");
+      await createReferralInvite(access, {
+        referred_name: inviteName.trim() || undefined,
+        referred_email: inviteEmail.trim() || undefined,
+      });
+      setInviteName("");
+      setInviteEmail("");
+      await loadData();
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? "Falha ao registrar indicacão.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(val);
+
+  const activeReferralsCount = summary?.active_referrals_count ?? 0;
+  const pendingReferralsCount = summary?.pending_referrals_count ?? 0;
+  const totalEarnings = (summary?.total_credits_cents ?? 0) / 100;
+  const inviteSlotsLimit = summary?.commission_invites_limit ?? 3;
+  const inviteSlotsRemaining = summary?.commission_invites_remaining ?? inviteSlotsLimit;
+  const level1Credits = (summary?.level_1_credits_cents ?? 0) / 100;
+  const level2Credits = (summary?.level_2_credits_cents ?? 0) / 100;
+  const level3Credits = (summary?.level_3_credits_cents ?? 0) / 100;
+  const investedTotal = (withdrawalSummary?.investments_total_cents ?? 0) / 100;
+  const withdrawnTotal = (withdrawalSummary?.withdrawals_total_cents ?? 0) / 100;
+  const level1Rate = summary?.commission_rates?.level_1_percent ?? 0;
+  const level2Rate = summary?.commission_rates?.level_2_percent ?? 0;
+  const level3Rate = summary?.commission_rates?.level_3_percent ?? 0;
+  const currentTier = summary?.current_tier;
+  const nextTier = summary?.next_tier;
+  const creditsToNext = (summary?.credits_to_next_cents ?? 0) / 100;
+  const activeToNext = summary?.active_to_next ?? 0;
+
+  const sortedReferrals = [...invites].sort((a, b) => new Date(b.joined_date).getTime() - new Date(a.joined_date).getTime());
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 md:space-y-8">
-      
-      {/* Hero Section */}
+      {errorMsg ? (
+        <div className="rounded border border-red-800/60 bg-red-900/20 px-3 py-2 text-xs text-red-300">{errorMsg}</div>
+      ) : null}
+
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 md:p-8 text-center relative overflow-hidden">
         <div className="relative z-10">
-          <h2 className="text-xl md:text-2xl font-bold text-white mb-2">Programa de Benefícios</h2>
+          <h2 className="text-xl md:text-2xl font-bold text-white mb-2">Programa de Beneficios</h2>
           <p className="text-slate-400 max-w-xl mx-auto text-sm mb-6 leading-relaxed">
-            Convide parceiros para a plataforma e acumule <strong>Créditos Operacionais</strong>. 
-            Utilize seus créditos para abater taxas de performance ou acessar relatórios exclusivos.
+            Convide parceiros para a plataforma e ganhe <strong>Comissão sobre os aportes</strong>. Apenas as 3 primeiras indicacoes geram comissão (5%, 3%, 2%).
           </p>
-          
+          <div className="mb-5 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-400">
+            <span className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 font-mono">
+              Codigo: {referralCode || "VFX-XXXXXXX"}
+            </span>
+            <span className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1">
+              Comissoes restantes: {inviteSlotsRemaining}/{inviteSlotsLimit}
+            </span>
+          </div>
+
           <div className="flex flex-col md:flex-row items-center justify-center gap-3 max-w-lg mx-auto">
             <div className="bg-slate-950 border border-slate-800 rounded px-4 py-2.5 flex-1 w-full text-slate-300 font-mono text-xs truncate">
               {referralLink}
             </div>
-            <button 
+            <button
               onClick={handleCopy}
               className="bg-slate-800 hover:bg-slate-700 text-white font-medium py-2 px-4 rounded transition-colors flex items-center justify-center gap-2 border border-slate-700 text-sm w-full md:w-auto"
             >
@@ -49,14 +148,42 @@ const Referrals: React.FC<ReferralsProps> = ({ user, state }) => {
         </div>
       </div>
 
-      {/* Benefits Grid */}
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 md:p-6">
+        <h3 className="text-sm font-bold text-white tracking-wide mb-4">Registrar Indicacão</h3>
+        <p className="text-xs text-slate-500 mb-4">
+          As 3 primeiras indicacoes geram comissão (5%, 3%, 2%). Restantes nao geram comissão.
+        </p>
+        <form onSubmit={handleCreateInvite} className="grid md:grid-cols-3 gap-3">
+          <input
+            value={inviteName}
+            onChange={(e) => setInviteName(e.target.value)}
+            placeholder="Nome do indicado"
+            className="bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-slate-200"
+          />
+          <input
+            type="email"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            placeholder="E-mail do indicado"
+            className="bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-slate-200"
+          />
+          <button
+            type="submit"
+            disabled={submitting || (!inviteName.trim() && !inviteEmail.trim())}
+            className="bg-slate-100 hover:bg-white disabled:bg-slate-800 disabled:text-slate-500 text-slate-900 font-semibold rounded px-3 py-2 text-sm"
+          >
+            {submitting ? "Enviando..." : "Criar Indicacão"}
+          </button>
+        </form>
+      </div>
+
       <div className="grid md:grid-cols-3 gap-4 md:gap-6">
         <div className="bg-slate-900 border border-slate-800 p-6 rounded-lg flex items-center gap-4">
           <div className="p-3 bg-slate-800 rounded text-slate-400 border border-slate-700">
             <Users size={20} />
           </div>
           <div>
-            <p className="text-slate-500 text-xs uppercase tracking-wider">Indicações Ativas</p>
+            <p className="text-slate-500 text-xs uppercase tracking-wider">Indicacoes Ativas</p>
             <h3 className="text-xl font-bold text-white">{activeReferralsCount}</h3>
           </div>
         </div>
@@ -65,7 +192,7 @@ const Referrals: React.FC<ReferralsProps> = ({ user, state }) => {
             <Ticket size={20} />
           </div>
           <div>
-            <p className="text-slate-500 text-xs uppercase tracking-wider">Créditos Gerados</p>
+            <p className="text-slate-500 text-xs uppercase tracking-wider">Creditos Gerados</p>
             <h3 className="text-xl font-bold text-white">{formatCurrency(totalEarnings)}</h3>
           </div>
         </div>
@@ -74,80 +201,131 @@ const Referrals: React.FC<ReferralsProps> = ({ user, state }) => {
             <Gift size={20} />
           </div>
           <div>
-            <p className="text-slate-500 text-xs uppercase tracking-wider">Nível de Cliente</p>
-            <h3 className="text-xl font-bold text-white">Prime</h3>
+            <p className="text-slate-500 text-xs uppercase tracking-wider">Nivel de Cliente</p>
+            <h3 className="text-xl font-bold text-white">{currentTier?.name ?? "Start"}</h3>
           </div>
         </div>
       </div>
-      
-      {/* Referrals List */}
+
+      <div className="grid md:grid-cols-2 gap-4 md:gap-6">
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-lg flex items-center gap-4">
+          <div className="p-3 bg-slate-800 rounded text-slate-400 border border-slate-700">
+            <TrendingUp size={20} />
+          </div>
+          <div>
+            <p className="text-slate-500 text-xs uppercase tracking-wider">Total Aportado</p>
+            <h3 className="text-xl font-bold text-white">{formatCurrency(investedTotal)}</h3>
+          </div>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-lg flex items-center gap-4">
+          <div className="p-3 bg-slate-800 rounded text-slate-400 border border-slate-700">
+            <TrendingDown size={20} />
+          </div>
+          <div>
+            <p className="text-slate-500 text-xs uppercase tracking-wider">Total Sacado</p>
+            <h3 className="text-xl font-bold text-white">{formatCurrency(withdrawnTotal)}</h3>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 md:p-6 space-y-3">
+        <h3 className="text-sm font-bold text-white tracking-wide">Comissão por Ordem da Indicacão</h3>
+        <div className="grid md:grid-cols-3 gap-3">
+          <div className="rounded border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">1ª Indicação</p>
+            <p className="text-lg font-semibold text-white mt-1">{level1Rate}%</p>
+            <p className="text-xs text-slate-500 mt-2">Creditos: {formatCurrency(level1Credits)}</p>
+          </div>
+          <div className="rounded border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">2ª Indicação</p>
+            <p className="text-lg font-semibold text-white mt-1">{level2Rate}%</p>
+            <p className="text-xs text-slate-500 mt-2">Creditos: {formatCurrency(level2Credits)}</p>
+          </div>
+          <div className="rounded border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">ª Indicação</p>
+            <p className="text-lg font-semibold text-white mt-1">{level3Rate}%</p>
+            <p className="text-xs text-slate-500 mt-2">Creditos: {formatCurrency(level3Credits)}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 md:p-6 space-y-3">
+        <h3 className="text-sm font-bold text-white tracking-wide">Regras do Programa de Beneficios</h3>
+        <div className="grid md:grid-cols-3 gap-3">
+          <div className="rounded border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">Desconto em Taxa</p>
+            <p className="text-lg font-semibold text-white mt-1">{currentTier?.fee_discount ?? "0%"}</p>
+          </div>
+          <div className="rounded border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">Relatorio Bonus</p>
+            <p className="text-lg font-semibold text-white mt-1">{currentTier?.bonus_report ?? "Mensal"}</p>
+          </div>
+          <div className="rounded border border-slate-800 bg-slate-950 p-3">
+            <p className="text-[10px] uppercase tracking-wider text-slate-500">Indicações Pendentes</p>
+            <p className="text-lg font-semibold text-white mt-1">{pendingReferralsCount}</p>
+          </div>
+        </div>
+        {nextTier ? (
+          <p className="text-xs text-slate-400">
+            Proximo nivel: <strong>{nextTier.name}</strong> | faltam {formatCurrency(creditsToNext)} e {activeToNext}{" "}
+            indicaçoes ativas.
+          </p>
+        ) : (
+          <p className="text-xs text-emerald-400">Nivel maximo alcancado. Beneficios no maior patamar.</p>
+        )}
+      </div>
+
       <div className="bg-slate-900 border border-slate-800 rounded-lg">
-        <h3 className="px-4 py-3 md:px-6 md:py-4 border-b border-slate-800 text-sm font-bold text-white tracking-wide">Minhas Indicações</h3>
-        {sortedReferrals.length === 0 ? (
-           <p className="p-8 text-center text-sm text-slate-600">Nenhuma indicação registrada.</p>
+        <h3 className="px-4 py-3 md:px-6 md:py-4 border-b border-slate-800 text-sm font-bold text-white tracking-wide">
+          Minhas Indicaçoes
+        </h3>
+        {loading ? (
+          <p className="p-8 text-center text-sm text-slate-600">Carregando...</p>
+        ) : sortedReferrals.length === 0 ? (
+          <p className="p-8 text-center text-sm text-slate-600">Nenhuma indicação registrada.</p>
         ) : (
           <div>
-             {/* Desktop Table */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-sm text-slate-400">
-                 <thead className="bg-slate-950/50 text-slate-500 uppercase font-semibold text-[10px] tracking-wider">
+                <thead className="bg-slate-950/50 text-slate-500 uppercase font-semibold text-[10px] tracking-wider">
                   <tr>
                     <th className="px-6 py-4">Cliente Indicado</th>
                     <th className="px-6 py-4">Data de Cadastro</th>
                     <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Créditos Gerados</th>
+                    <th className="px-6 py-4 text-right">Creditos Gerados</th>
                   </tr>
                 </thead>
-                 <tbody className="divide-y divide-slate-800">
-                  {sortedReferrals.map(ref => (
+                <tbody className="divide-y divide-slate-800">
+                  {sortedReferrals.map((ref) => (
                     <tr key={ref.id} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="px-6 py-4 font-medium text-slate-200">{ref.name}</td>
-                      <td className="px-6 py-4">{new Date(ref.joinedDate).toLocaleDateString('pt-BR')}</td>
+                      <td className="px-6 py-4 font-medium text-slate-200">
+                        {ref.referred_username || ref.referred_name || ref.referred_email || `Indicação #${ref.id}`}
+                      </td>
+                      <td className="px-6 py-4">{new Date(ref.joined_date).toLocaleDateString("pt-BR")}</td>
                       <td className="px-6 py-4">
-                         {ref.status === 'ACTIVE' ? (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-900/20 text-emerald-500"><CheckCircle size={12} />Ativo</span>
+                        {ref.status === "ACTIVE" ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-900/20 text-emerald-500">
+                            <CheckCircle size={12} />
+                            Ativo
+                          </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-900/20 text-amber-500"><Clock size={12} />Pendente</span>
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-900/20 text-amber-500">
+                            <Clock size={12} />
+                            Pendente
+                          </span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-right font-mono text-emerald-400">
-                        {ref.earnings > 0 ? `+${formatCurrency(ref.earnings)}` : '-'}
+                        {ref.credits_cents > 0 ? `+${formatCurrency(ref.credits_cents / 100)}` : "-"}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-             {/* Mobile Card List */}
-            <div className="block md:hidden p-2">
-              <div className="space-y-2">
-                {sortedReferrals.map(ref => (
-                  <div key={ref.id} className="bg-slate-800/50 p-3 rounded-lg border border-slate-700/50">
-                    <div className="flex justify-between items-start mb-3">
-                       <div>
-                        <p className="font-medium text-slate-200 text-sm">{ref.name}</p>
-                        <p className="text-xs text-slate-500">Cadastro: {new Date(ref.joinedDate).toLocaleDateString('pt-BR')}</p>
-                      </div>
-                      {ref.status === 'ACTIVE' ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-900/20 text-emerald-500"><CheckCircle size={12} />Ativo</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-900/20 text-amber-500"><Clock size={12} />Pendente</span>
-                      )}
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-700/50">
-                      <p className="text-xs text-slate-400">Créditos Gerados:</p>
-                      <p className="font-mono text-emerald-400 text-sm">
-                        {ref.earnings > 0 ? `+${formatCurrency(ref.earnings)}` : '-'}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
       </div>
-
     </div>
   );
 };

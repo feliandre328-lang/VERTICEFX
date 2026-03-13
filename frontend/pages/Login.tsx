@@ -1,43 +1,58 @@
-import React, { useState } from "react";
-import { UserRole } from "../types";
-import { ShieldCheck, User, Mail, Lock, ChevronLeft } from "lucide-react";
-import { login as apiLogin } from "../services/api";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ShieldCheck, User, Mail, Lock, ChevronLeft, Eye, EyeOff } from "lucide-react";
+import { useAuth } from "../layouts/AuthContext";
 
-interface LoginProps {
-  onLoginRequest: (role: UserRole) => void;
-  onGoToSignUp: () => void;
-}
+type View = "role" | "client" | "admin";
 
-const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
-  const [view, setView] = useState<"role" | "clientForm">("role");
-  const [usernameOrEmail, setUsernameOrEmail] = useState(""); // ⚠️ por padrão do Django JWT, use username
+type Props = {
+  mode?: "client" | "admin"; // ✅ se vier, pula seleção e força a tela correta
+};
+
+const Login: React.FC<Props> = ({ mode }) => {
+  const nav = useNavigate();
+  const { loginClient, loginAdmin } = useAuth();
+
+  const initialView: View = mode === "client" ? "client" : mode === "admin" ? "admin" : "role";
+
+  const [view, setView] = useState<View>(initialView);
+  const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const handleClientSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // ✅ Se mudar a rota (client/admin), atualiza view automaticamente
+  useEffect(() => {
+    if (mode === "client") setView("client");
+    else if (mode === "admin") setView("admin");
+    else setView("role");
+  }, [mode]);
+
+  useEffect(() => {
+    setShowPassword(false);
+  }, [view]);
+
+  const title = useMemo(() => {
+    if (view === "client") return "Acesso do Cliente";
+    if (view === "admin") return "Acesso ao Backoffice";
+    return "Selecione seu acesso";
+  }, [view]);
+
+  const goToSignUp = () => nav("/signup");
+
+  const goBack = () => {
     setErrorMsg("");
+    setPassword("");
+    setUsernameOrEmail("");
+    setShowPassword(false);
 
-    try {
-      setLoading(true);
+    // ✅ Se mode foi informado, voltar deve levar pra rota correta, não pra seleção
+    if (mode === "client") return nav("/login", { replace: true });
+    if (mode === "admin") return nav("/admin/login", { replace: true });
 
-      // ✅ Login real no Django (SimpleJWT: TokenObtainPair)
-      // Por padrão ele espera "username" e "password".
-      // Aqui tratamos o campo como username (mesmo que o placeholder seja email).
-      const { access, refresh } = await apiLogin(usernameOrEmail, password);
-
-      // ✅ Guarda tokens (simples e funcional)
-      localStorage.setItem("access", access);
-      localStorage.setItem("refresh", refresh);
-
-      // ✅ segue o fluxo normal do app
-      onLoginRequest("CLIENT");
-    } catch (err: any) {
-      setErrorMsg(err?.message ?? "Falha no login");
-    } finally {
-      setLoading(false);
-    }
+    setView("role");
   };
 
   const LogoHeader = () => (
@@ -56,18 +71,62 @@ const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
           <path d="M65 80 L65 35" stroke="url(#loginGradient)" strokeWidth="8" strokeLinecap="round" />
         </svg>
       </div>
+
       <h1 className="text-3xl font-bold text-white tracking-tight">VÉRTICE FX</h1>
       <p className="text-slate-500 text-sm uppercase tracking-widest mt-2">Sistema de Gestão Financeira</p>
     </div>
   );
 
+  const ErrorBox = () =>
+    errorMsg ? (
+      <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        {errorMsg}
+      </div>
+    ) : null;
+
+  const handleClientSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    try {
+      setLoading(true);
+      await loginClient(usernameOrEmail, password);
+      nav("/app/dashboard", { replace: true });
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? "Falha no login do cliente");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    try {
+      setLoading(true);
+      await loginAdmin(usernameOrEmail, password);
+      nav("/app/admin/dashboard", { replace: true });
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? "Falha no login do backoffice");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const renderRoleSelection = () => (
     <div className="w-full max-w-2xl">
       <LogoHeader />
+
       <div className="grid md:grid-cols-2 gap-6">
         <button
-          onClick={() => setView("clientForm")}
+          onClick={() => {
+            setErrorMsg("");
+            setView("client");
+          }}
           className="bg-slate-900 border border-slate-800 p-8 rounded-xl hover:border-blue-500/50 hover:bg-slate-800 transition-all group text-left"
+          disabled={loading}
+          type="button"
         >
           <div className="w-12 h-12 bg-blue-500/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-blue-500/20">
             <User className="text-blue-500" size={24} />
@@ -79,117 +138,161 @@ const Login: React.FC<LoginProps> = ({ onLoginRequest, onGoToSignUp }) => {
         </button>
 
         <button
-          onClick={() => onLoginRequest("ADMIN")}
+          onClick={() => {
+            setErrorMsg("");
+            setView("admin");
+          }}
           className="bg-slate-900 border border-slate-800 p-8 rounded-xl hover:border-emerald-500/50 hover:bg-slate-800 transition-all group text-left"
+          disabled={loading}
+          type="button"
         >
           <div className="w-12 h-12 bg-emerald-500/10 rounded-lg flex items-center justify-center mb-4 group-hover:bg-emerald-500/20">
             <ShieldCheck className="text-emerald-500" size={24} />
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Backoffice / Admin</h2>
           <p className="text-sm text-slate-400">
-            Acesso restrito para gestão de caixa, aprovação de saques e definição de performance.
+            Acesso restrito para gestão de caixa, aprovação de aportes e controles operacionais.
           </p>
         </button>
       </div>
+
       <div className="mt-8 text-center text-sm text-slate-500">
         <p>
           Não tem uma conta?{" "}
-          <button onClick={onGoToSignUp} className="font-semibold text-blue-500 hover:text-blue-400 transition-colors">
+          <button onClick={goToSignUp} className="font-semibold text-blue-500 hover:text-blue-400 transition-colors">
             Criar Conta
           </button>
         </p>
       </div>
+
       <div className="mt-8 text-center text-xs text-slate-600">
-        <p>&copy; 2024 Vértice FX. Ambiente Seguro.</p>
+        <p>&copy; 2026 Vértice FX. Ambiente Seguro.</p>
       </div>
     </div>
   );
 
-  const renderClientForm = () => (
-    <div className="w-full max-w-sm">
-      <LogoHeader />
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-8">
-        <h2 className="text-xl font-bold text-white text-center mb-1">Acesso do Cliente</h2>
-        <p className="text-sm text-slate-500 text-center mb-6">Entre com suas credenciais.</p>
+  const renderForm = (kind: "client" | "admin") => {
+    const isAdmin = kind === "admin";
 
-        {errorMsg ? (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {errorMsg}
-          </div>
-        ) : null}
+    return (
+      <div className="w-full max-w-sm">
+        <LogoHeader />
 
-        <form onSubmit={handleClientSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-              Usuário (ou Email)
-            </label>
-            <div className="relative">
-              <Mail size={16} className="absolute left-3 top-3.5 text-slate-500" />
-              <input
-                type="text"
-                value={usernameOrEmail}
-                onChange={(e) => setUsernameOrEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 transition-all placeholder:text-slate-600"
-                placeholder="admin (ou seu email, se for seu username)"
-                autoComplete="username"
-                required
-                disabled={loading}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Senha</label>
-            <div className="relative">
-              <Lock size={16} className="absolute left-3 top-3.5 text-slate-500" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 transition-all placeholder:text-slate-600"
-                placeholder="••••••••"
-                autoComplete="current-password"
-                required
-                disabled={loading}
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all"
-            disabled={loading}
-          >
-            {loading ? "Entrando..." : "Continuar"}
-          </button>
-        </form>
-
-        <div className="mt-6 text-center text-sm text-slate-500">
-          <p>
-            Não tem uma conta?{" "}
-            <button onClick={onGoToSignUp} className="font-semibold text-blue-500 hover:text-blue-400 transition-colors">
-              Criar Conta
-            </button>
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8">
+          <h2 className="text-xl font-bold text-white text-center mb-1">
+            {isAdmin ? "Acesso ao Backoffice" : "Acesso do Cliente"}
+          </h2>
+          <p className="text-sm text-slate-500 text-center mb-6">
+            Entre com suas credenciais {isAdmin ? "do Backoffice" : "de cliente"}.
           </p>
-        </div>
-      </div>
 
-      <div className="mt-6 text-center">
-        <button
-          onClick={() => setView("role")}
-          className="text-sm text-slate-500 hover:text-slate-300 transition-colors flex items-center justify-center gap-2 mx-auto"
-          disabled={loading}
-        >
-          <ChevronLeft size={16} />
-          Voltar
-        </button>
+          <ErrorBox />
+
+          <form onSubmit={isAdmin ? handleAdminSubmit : handleClientSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Usuário
+              </label>
+              <div className="relative">
+                <Mail size={16} className="absolute left-3 top-3.5 text-slate-500" />
+                <input
+                  type="text"
+                  value={usernameOrEmail}
+                  onChange={(e) => setUsernameOrEmail(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-900 transition-all placeholder:text-slate-600"
+                  placeholder={isAdmin ? "admin" : "seu usuário"}
+                  autoComplete="username"
+                  required
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Senha</label>
+              <div className="relative">
+                <Lock size={16} className="absolute left-3 top-3.5 text-slate-500" />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg py-3 pl-10 pr-11 text-white focus:outline-none focus:border-blue-900 transition-all placeholder:text-slate-600"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-white"
+                  disabled={loading}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {!isAdmin && (
+                <div className="mt-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => nav("/reset-password")}
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                    disabled={loading}
+                  >
+                    Esqueci minha senha
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className={`w-full py-3 ${
+                isAdmin ? "bg-emerald-600 hover:bg-emerald-500" : "bg-blue-600 hover:bg-blue-500"
+              } disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-all`}
+              disabled={loading}
+            >
+              {loading ? "Entrando..." : "Continuar"}
+            </button>
+          </form>
+
+          {!isAdmin && (
+            <div className="mt-6 text-center text-sm text-slate-500">
+              <p>
+                Não tem uma conta?{" "}
+                <button onClick={goToSignUp} className="font-semibold text-blue-500 hover:text-blue-400 transition-colors">
+                  Criar Conta
+                </button>
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* ✅ Só mostra "Voltar" se NÃO estiver travado em uma rota fixa */}
+        {!mode && (
+          <div className="mt-6 text-center">
+            <button
+              onClick={goBack}
+              className="text-sm text-slate-500 hover:text-slate-300 transition-colors flex items-center justify-center gap-2 mx-auto"
+              disabled={loading}
+              type="button"
+            >
+              <ChevronLeft size={16} />
+              Voltar
+            </button>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
-      {view === "role" ? renderRoleSelection() : renderClientForm()}
+      {/* ✅ Se mode veio, nunca mostra seleção */}
+      {!mode && view === "role" && renderRoleSelection()}
+      {(mode === "client" || view === "client") && renderForm("client")}
+      {(mode === "admin" || view === "admin") && renderForm("admin")}
     </div>
   );
 };
