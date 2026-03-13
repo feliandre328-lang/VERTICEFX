@@ -191,7 +191,7 @@ const Login: React.FC<Props> = ({ mode }) => {
           <form onSubmit={isAdmin ? handleAdminSubmit : handleClientSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                Usuário (ou Email)
+                Usuário
               </label>
               <div className="relative">
                 <Mail size={16} className="absolute left-3 top-3.5 text-slate-500" />

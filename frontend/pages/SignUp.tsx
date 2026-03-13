@@ -917,7 +917,7 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
         </div>
 
         {inviteCode ? (
-          <div className="mb-6 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-300">
+          <div className="mb-6 rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-300 text-center">
             {inviteLoading ? (
               <span>Validando convite...</span>
             ) : inviteError ? (
@@ -926,7 +926,7 @@ export default function SignUp({ onSignUp, onBackToLogin }: SignUpProps) {
               <span>
                 Convite {inviteCode} valido
                 {inviteReferrer ? ` - Indicador: ${inviteReferrer}` : ""}
-                {inviteSlotsRemaining !== null ? ` - Comissao restante: ${inviteSlotsRemaining}/3` : ""}
+              
               </span>
             )}
           </div>
